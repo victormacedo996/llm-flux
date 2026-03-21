@@ -1,8 +1,8 @@
-# ModelForge
+# LLM-Flux
 
 A dissertation methodology framework for LLM compression research.
 
-ModelForge abstracts and orchestrates compression, profiling, and model healing techniques over a user-defined DAG pipeline. It generates structured logs and tables ready for dissertation documentation.
+LLM-Flux abstracts and orchestrates compression, profiling, and model healing techniques over a user-defined DAG pipeline. It generates structured logs and tables ready for dissertation documentation.
 
 ## Quick Start (uv)
 
