@@ -52,7 +52,7 @@ def run_pipeline(
     # ── 3. Print step summary ───────────────────────────────────────────────
     print("\nPlanned execution order:")
     for i, step in enumerate(pipeline.steps, 1):
-        print(f"  {i:2}. [{step.kind.value.upper():8}] {step.label}")
+        print(f"  {i:2}. [{step.kind.upper():8}] {step.label}")
 
     # ── 4. Confirmation ────────────────────────────────────────────────────
     if not skip_confirmation:

@@ -21,7 +21,7 @@ from llm_flux.adapters.compression.bitsandbytes import BitsAndBytesAdapter, Bits
 from llm_flux.adapters.healing.hf_trainer import HFTrainerAdapter
 from llm_flux.core.model import ModelSource
 from llm_flux.core.healing import HealingConfig, LoRAConfig
-from llm_flux.core.pipeline import Pipeline, PipelineStep, StepKind
+from llm_flux.core.pipeline import Pipeline, PipelineStep
 from llm_flux.datasets.port import DatasetConfig
 from llm_flux.profiling.adapters.comprehensive import (
     ComprehensiveProfilingAdapter,
@@ -110,12 +110,12 @@ pipeline = Pipeline(
     name="bnb-nf4-compression-study",
     description="Profiles baseline Qwen, quantizes to NF4, and runs LoRA healing.",
     steps=[
-        PipelineStep(kind=StepKind.LOAD,     label="Load Model",             port=model_handle),
-        PipelineStep(kind=StepKind.PROFILE,  label="Baseline Profiling",     port=baseline_profiler),
-        PipelineStep(kind=StepKind.COMPRESS, label="Apply NF4 Quantization", port=bnb),
-        PipelineStep(kind=StepKind.PROFILE,  label="Post-NF4 Profiling",     port=fast_profiler),
-        PipelineStep(kind=StepKind.HEAL,     label="LoRA Recovery",          port=healer),
-        PipelineStep(kind=StepKind.PROFILE,  label="Post-Healing Profiling", port=fast_profiler),
+        PipelineStep(label="Load Model",             port=model_handle),
+        PipelineStep(label="Baseline Profiling",     port=baseline_profiler),
+        PipelineStep(label="Apply NF4 Quantization", port=bnb),
+        PipelineStep(label="Post-NF4 Profiling",     port=fast_profiler),
+        PipelineStep(label="LoRA Recovery",          port=healer),
+        PipelineStep(label="Post-Healing Profiling", port=fast_profiler),
     ]
 )
 

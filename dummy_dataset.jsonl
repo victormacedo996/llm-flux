@@ -1,0 +1,3 @@
+{"text": "This is a test sentence for LLM pipeline validation. The model should load, prune, heal, and quantize properly."}
+{"text": "The quick brown fox jumps over the lazy dog. A second sample for the healing process to use."}
+{"text": "Deep learning research involves many steps including pruning and quantization of large models."}

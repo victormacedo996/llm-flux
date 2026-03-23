@@ -26,7 +26,7 @@ def build_dag(pipeline: Pipeline) -> nx.DiGraph:
         g.add_node(
             node_id,
             step=step,
-            kind=step.kind.value,
+            kind=step.kind,
             label=step.label,
             index=i,
         )

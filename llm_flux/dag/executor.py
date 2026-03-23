@@ -9,7 +9,6 @@ from typing import Any, Optional
 import networkx as nx
 from loguru import logger
 
-from llm_flux.core.pipeline import StepKind
 from llm_flux.core.compression import CompressionNotSupportedError
 from llm_flux.core.results import PipelineRunResult
 from llm_flux.core.profiling import ProfilingResult
@@ -44,24 +43,24 @@ class PipelineExecutor:
             port = step.port
             idx = node["index"] + 1
 
-            logger.info(f"[{idx}/{step_count}] ▶ {step.kind.value.upper()} — {step.label}")
+            logger.info(f"[{idx}/{step_count}] ▶ {step.kind.upper()} — {step.label}")
 
             try:
                 match step.kind:
-                    case StepKind.LOAD:
+                    case "load":
                         model = port.load()
                         logger.info(f"  ✅ Model loaded: {port.name}")
 
-                    case StepKind.COMPRESS:
+                    case "compress":
                         model = port.compress(model)
                         logger.info(f"  ✅ Compression applied: {port.label}")
 
-                    case StepKind.PROFILE:
+                    case "profile":
                         result = port.profile(model, stage_label=step.label)
                         profiling_records.append(result)
                         logger.info(f"  ✅ {result.summary()}")
 
-                    case StepKind.HEAL:
+                    case "heal":
                         model = port.heal(model)
                         logger.info(f"  ✅ Healing complete: {port.label}")
 

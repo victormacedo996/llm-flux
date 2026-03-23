@@ -61,8 +61,20 @@ class HFTrainerAdapter(HealingPort):
         if actual_tokenizer.pad_token is None:
             actual_tokenizer.pad_token = actual_tokenizer.eos_token
 
+        # Determine max sequence length
+        max_seq_len = cfg.max_seq_length
+        if max_seq_len is None:
+            max_seq_len = self._get_max_seq_length(model, actual_tokenizer)
+            logger.info(f"  🔍 Auto-detected max_seq_length: {max_seq_len}")
+        else:
+            logger.info(f"  📍 Using configured max_seq_length: {max_seq_len}")
+
         def tokenize_function(examples):
-            return actual_tokenizer(examples["text"], truncation=True, max_length=512)
+            return actual_tokenizer(
+                examples["text"], 
+                truncation=True, 
+                max_length=max_seq_len
+            )
 
         logger.info("  🔤 Tokenizing dataset...")
         # For IterableDataset, column_names might be None until actually peeked
@@ -123,6 +135,25 @@ class HFTrainerAdapter(HealingPort):
         trainer.train()
         logger.info("  ✅ Healing complete.")
         return model
+
+    @staticmethod
+    def _get_max_seq_length(model: Any, tokenizer: Any, default: int = 512) -> int:
+        """
+        Heuristic to find the model's maximum supported sequence length.
+        """
+        # 1. Try tokenizer property
+        res = getattr(tokenizer, "model_max_length", None)
+        if res and isinstance(res, (int, float)) and res < 1e6:
+            return int(res)
+
+        # 2. Try model config attributes
+        if hasattr(model, "config"):
+            for attr in ["max_position_embeddings", "n_positions", "seq_length"]:
+                res = getattr(model.config, attr, None)
+                if res and isinstance(res, (int, float)):
+                    return int(res)
+
+        return default
 
     @staticmethod
     def _default_trainer() -> type:

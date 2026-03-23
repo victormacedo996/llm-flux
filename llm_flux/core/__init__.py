@@ -3,7 +3,7 @@
 from llm_flux.core.compression import CompressionConfig, CompressionNotSupportedError, CompressionPort
 from llm_flux.core.healing import HealingConfig, HealingPort, LoRAConfig
 from llm_flux.core.model import ModelHandle, ModelSource
-from llm_flux.core.pipeline import Pipeline, PipelineStep, StepKind
+from llm_flux.core.pipeline import Pipeline, PipelineStep
 from llm_flux.core.profiling import (
     AccuracyMetrics,
     LatencyMetrics,
@@ -25,7 +25,6 @@ __all__ = [
     "ModelSource",
     "Pipeline",
     "PipelineStep",
-    "StepKind",
     "AccuracyMetrics",
     "LatencyMetrics",
     "MemoryMetrics",

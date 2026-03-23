@@ -12,13 +12,6 @@ from typing import Any
 from pydantic import BaseModel, field_validator, model_validator
 
 
-class StepKind(str, Enum):
-    """The four primitive step types recognised by the DAG executor."""
-
-    LOAD = "load"
-    COMPRESS = "compress"
-    PROFILE = "profile"
-    HEAL = "heal"
 
 
 class PipelineStep(BaseModel):
@@ -26,9 +19,33 @@ class PipelineStep(BaseModel):
     Declarative descriptor for one DAG node.
     """
 
-    kind: StepKind
     label: str  # human label rendered in the DAG graph and logs
     port: Any   # The actual port instance (ModelHandle, CompressionPort, etc.)
+
+    @property
+    def kind(self) -> str:
+        """
+        Infer the step type from the port's interface to keep the
+        pipeline definition cleaner.
+        """
+        from llm_flux.core.compression import CompressionPort
+        from llm_flux.core.healing import HealingPort
+        from llm_flux.core.model import ModelHandle
+        from llm_flux.core.profiling import ProfilingPort
+
+        if isinstance(self.port, ModelHandle):
+            return "load"
+        if isinstance(self.port, CompressionPort):
+            return "compress"
+        if isinstance(self.port, ProfilingPort):
+            return "profile"
+        if isinstance(self.port, HealingPort):
+            return "heal"
+
+        raise ValueError(
+            f"Step '{self.label}' has an unknown port type: {type(self.port).__name__}. "
+            "Must inherit from ModelHandle, CompressionPort, ProfilingPort, or HealingPort."
+        )
 
 
 class Pipeline(BaseModel):
@@ -45,7 +62,7 @@ class Pipeline(BaseModel):
     @field_validator("steps")
     @classmethod
     def _must_start_with_load(cls, steps: list[PipelineStep]) -> list[PipelineStep]:
-        if not steps or steps[0].kind != StepKind.LOAD:
+        if not steps or steps[0].kind != "load":
             raise ValueError("A Pipeline must begin with a LOAD step.")
         return steps
 

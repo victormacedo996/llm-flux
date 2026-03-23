@@ -60,6 +60,7 @@ class HealingConfig(BaseModel):
     output_dir: str = "./healing_output"
     save_steps: int = 100
     logging_steps: int = 10
+    max_seq_length: int | None = None
 
     # Optional PEFT / LoRA — None → full fine-tune
     lora: LoRAConfig | None = None
