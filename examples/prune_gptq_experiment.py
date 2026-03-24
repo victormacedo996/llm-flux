@@ -46,7 +46,11 @@ os.environ["HF_HOME"] = CACHE_DIR
 os.environ["HF_DATASETS_CACHE"] = CACHE_DIR
 
 from llm_flux.adapters.model.huggingface import HFModelHandle
-from llm_flux.adapters.compression.depth_pruning import DepthPruningAdapter, DepthPruningConfig
+from llm_flux.adapters.compression.depth_pruning import (
+    DepthPruningAdapter, 
+    DepthPruningConfig,
+    angular_distance_importance
+)
 from llm_flux.adapters.compression.gptq import GPTQAdapter, GPTQConfig
 from llm_flux.adapters.healing.hf_trainer import HFTrainerAdapter
 from llm_flux.core.model import ModelSource
@@ -127,6 +131,7 @@ def run_experiment_for_ratio(ratio: float):
             ),
         ),
         tokenizer=model_handle,
+        importance_fn=angular_distance_importance,
     )
 
     # ── 4. Healing Adapter ─────────────────────────────────────────────────────

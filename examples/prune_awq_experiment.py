@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 from loguru import logger
 
-TINY_MODE = True  # Set to True for lightning-fast end-to-end pipeline validation
+TINY_MODE = False  # Set to True for lightning-fast end-to-end pipeline validation
 
 import torch
 HAS_GPU = torch.cuda.is_available()
@@ -33,11 +33,11 @@ if TINY_MODE:
 else:
     MODEL_ID = "TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T"
     DATASET_SOURCE = "allenai/c4"
-    C4_SAMPLES_FOR_HEALING = 5000
-    LIMIT_TEST_SAMPLES = 50
-    NUM_BENCHMARK_RUNS = 3
-    HEALING_STEPS = 50
-    CALIBRATION_SAMPLES = 32
+    C4_SAMPLES_FOR_HEALING = 3
+    LIMIT_TEST_SAMPLES = 3
+    NUM_BENCHMARK_RUNS = 1
+    HEALING_STEPS = 1
+    CALIBRATION_SAMPLES = 3
     USE_FP16 = HAS_GPU # Only use FP16 if we have a GPU
 
 
@@ -46,7 +46,11 @@ os.environ["HF_HOME"] = CACHE_DIR
 os.environ["HF_DATASETS_CACHE"] = CACHE_DIR
 
 from llm_flux.adapters.model.huggingface import HFModelHandle
-from llm_flux.adapters.compression.depth_pruning import DepthPruningAdapter, DepthPruningConfig
+from llm_flux.adapters.compression.depth_pruning import (
+    DepthPruningAdapter, 
+    DepthPruningConfig,
+    angular_distance_importance
+)
 # from modelforge.adapters.compression.mlp_pruning import MLPPrunin`gAdapter
 from llm_flux.adapters.compression.awq import AWQAdapter, AWQConfig
 from llm_flux.adapters.healing.hf_trainer import HFTrainerAdapter
@@ -128,6 +132,7 @@ def run_experiment_for_ratio(ratio: float):
             ),
         ),
         tokenizer=model_handle,
+        importance_fn=angular_distance_importance,
     )
 
     # # ── 4. MLP Pruning Adapter (with 64/128 alignment) ─────────────────────────
@@ -197,8 +202,8 @@ def run_experiment_for_ratio(ratio: float):
             PipelineStep(label="Post-Prune Profile",    port=fast_profiler),
             PipelineStep(label="LoRA Heal",             port=healer),
             PipelineStep(label="Post-Heal Profile",     port=fast_profiler),
-            PipelineStep(label="AWQ Quantize",          port=awq),
-            PipelineStep(label="Final AWQ Profile",     port=fast_profiler),
+            # PipelineStep(label="AWQ Quantize",          port=awq),
+            # PipelineStep(label="Final AWQ Profile",     port=fast_profiler),
         ]
     )
 

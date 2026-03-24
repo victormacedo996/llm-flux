@@ -7,7 +7,7 @@ across a calibration dataset. Supports aligning vocabulary sizes for Tensor Core
 from __future__ import annotations
 
 import math
-from typing import Any, List, Optional
+from typing import Any, Callable, List, Optional
 
 import torch
 import torch.nn as nn
@@ -30,15 +30,98 @@ class DepthPruningConfig(CompressionConfig):
     calibration_dataset: DatasetConfig
 
 
+def get_transformer_layers(model: Any) -> nn.ModuleList:
+    """Heuristic to find the transformer layers list (works for Llama, Qwen, Mistral)."""
+    if hasattr(model, "model") and hasattr(model.model, "layers"):
+        return model.model.layers  # Llama / Mistral
+    if hasattr(model, "transformer") and hasattr(model.transformer, "h"):
+        return model.transformer.h # GPT-2 / Qwen
+    
+    # Fallback search
+    for name, module in model.named_modules():
+        if isinstance(module, nn.ModuleList) and ("layers" in name or "h" in name or "blocks" in name):
+            return module
+    
+    raise CompressionNotSupportedError("Could not locate the nn.ModuleList containing transformer layers.")
+
+def angular_distance_importance(model: Any, input_ids: torch.Tensor) -> List[float]:
+    """
+    Calculates the angular distance between the input and output of each layer.
+    Angular Distance = (1/pi) * arccos(cosine_similarity)
+    """
+    # Find the module list holding the layers. In Llama, it's `model.model.layers`.
+    layers = get_transformer_layers(model)
+    num_layers = len(layers)
+    
+    # We will hook into each layer to capture its input and output.
+    layer_inputs: dict[int, list[torch.Tensor]] = {i: [] for i in range(num_layers)}
+    layer_outputs: dict[int, list[torch.Tensor]] = {i: [] for i in range(num_layers)}
+    
+    hooks = []
+    def get_hook(idx: int):
+        def hook(module, inp, out):
+            # inp[0] is typically the hidden states
+            h_in = inp[0].detach().cpu()
+            # out[0] is typically the hidden states after the layer
+            h_out = out[0].detach().cpu() if isinstance(out, tuple) else out.detach().cpu()
+            layer_inputs[idx].append(h_in)
+            layer_outputs[idx].append(h_out)
+        return hook
+
+    for i, layer in enumerate(layers):
+        hooks.append(layer.register_forward_hook(get_hook(i)))
+
+    # Run forward pass (batch by batch to save memory)
+    batch_size = 4
+    with torch.no_grad():
+        for i in range(0, input_ids.size(0), batch_size):
+            batch = input_ids[i : i + batch_size]
+            try:
+                model(batch)
+            except Exception as e:
+                logger.warning(f"  [Depth Prune] Forward pass error during calib: {e}")
+
+    for h in hooks:
+        h.remove()
+
+    distances: List[float] = []
+    for i in range(num_layers):
+        if not layer_inputs[i]:
+            distances.append(float("inf"))
+            continue
+        
+        # Concat all batches: shape (N, seq_len, hidden_size)
+        h_in = torch.cat(layer_inputs[i], dim=0).float()
+        h_out = torch.cat(layer_outputs[i], dim=0).float()
+        
+        # Normalize along hidden dim
+        cos_sim = torch.nn.functional.cosine_similarity(h_in, h_out, dim=-1)
+        # Clamp to avoid nan in arccos
+        cos_sim = torch.clamp(cos_sim, -1.0 + 1e-7, 1.0 - 1e-7)
+        # Compute angular distance per sequence element, then mean across batch and seq
+        ang_dist = (1.0 / math.pi) * torch.acos(cos_sim)
+        distances.append(ang_dist.mean().item())
+
+    return distances
+
+LayerImportanceFn = Callable[[Any, torch.Tensor], List[float]]
+
+
 class DepthPruningAdapter(CompressionPort):
     """
-    Implements Depth Pruning by removing layers with the smallest angular distance.
-    Angular distance measures the cosine similarity between inputs and outputs of a layer.
+    Implements Depth Pruning by removing layers with the smallest importance.
+    By default uses Angular distance which measures the cosine similarity between inputs and outputs of a layer.
     """
 
-    def __init__(self, config: DepthPruningConfig, tokenizer: Any) -> None:
+    def __init__(
+        self, 
+        config: DepthPruningConfig, 
+        tokenizer: Any,
+        importance_fn: Optional[LayerImportanceFn] = None
+    ) -> None:
         self.config = config
         self.tokenizer = tokenizer
+        self.importance_fn = importance_fn or angular_distance_importance
 
     def compress(self, model: Any) -> Any:
         try:
@@ -63,8 +146,8 @@ class DepthPruningAdapter(CompressionPort):
         # 2. Collect calibration data
         inputs = self._get_calibration_inputs(model.device)
 
-        # 3. Calculate angular distance for each layer
-        distances = self._compute_angular_distances(model, inputs)
+        # 3. Calculate importance for each layer
+        distances = self.importance_fn(model, inputs)
 
         # 4. Identify layers to drop (smallest distance = least transformative)
         # Sort distances ascending, take the top `num_prune` (excluding layer 0, typically kept)
@@ -114,82 +197,8 @@ class DepthPruningAdapter(CompressionPort):
         ).to(device)
         return inputs["input_ids"]
 
-    def _compute_angular_distances(self, model: Any, input_ids: torch.Tensor) -> List[float]:
-        """
-        Calculates the angular distance between the input and output of each layer.
-        Angular Distance = (1/pi) * arccos(cosine_similarity)
-        """
-        # Find the module list holding the layers. In Llama, it's `model.model.layers`.
-        layers = self._get_layer_list(model)
-        num_layers = len(layers)
-        
-        # We will hook into each layer to capture its input and output.
-        layer_inputs: dict[int, list[torch.Tensor]] = {i: [] for i in range(num_layers)}
-        layer_outputs: dict[int, list[torch.Tensor]] = {i: [] for i in range(num_layers)}
-        
-        hooks = []
-        def get_hook(idx: int):
-            def hook(module, inp, out):
-                # inp[0] is typically the hidden states
-                h_in = inp[0].detach().cpu()
-                # out[0] is typically the hidden states after the layer
-                h_out = out[0].detach().cpu() if isinstance(out, tuple) else out.detach().cpu()
-                layer_inputs[idx].append(h_in)
-                layer_outputs[idx].append(h_out)
-            return hook
-
-        for i, layer in enumerate(layers):
-            hooks.append(layer.register_forward_hook(get_hook(i)))
-
-        # Run forward pass (batch by batch to save memory)
-        batch_size = 4
-        with torch.no_grad():
-            for i in range(0, input_ids.size(0), batch_size):
-                batch = input_ids[i : i + batch_size]
-                try:
-                    model(batch)
-                except Exception as e:
-                    logger.warning(f"  [Depth Prune] Forward pass error during calib: {e}")
-
-        for h in hooks:
-            h.remove()
-
-        distances: List[float] = []
-        for i in range(num_layers):
-            if not layer_inputs[i]:
-                distances.append(float("inf"))
-                continue
-            
-            # Concat all batches: shape (N, seq_len, hidden_size)
-            h_in = torch.cat(layer_inputs[i], dim=0).float()
-            h_out = torch.cat(layer_outputs[i], dim=0).float()
-            
-            # Normalize along hidden dim
-            cos_sim = torch.nn.functional.cosine_similarity(h_in, h_out, dim=-1)
-            # Clamp to avoid nan in arccos
-            cos_sim = torch.clamp(cos_sim, -1.0 + 1e-7, 1.0 - 1e-7)
-            # Compute angular distance per sequence element, then mean across batch and seq
-            ang_dist = (1.0 / math.pi) * torch.acos(cos_sim)
-            distances.append(ang_dist.mean().item())
-
-        return distances
-
-    def _get_layer_list(self, model: Any) -> nn.ModuleList:
-        """Heuristic to find the transformer layers list (works for Llama, Qwen, Mistral)."""
-        if hasattr(model, "model") and hasattr(model.model, "layers"):
-            return model.model.layers  # Llama / Mistral
-        if hasattr(model, "transformer") and hasattr(model.transformer, "h"):
-            return model.transformer.h # GPT-2 / Qwen
-        
-        # Fallback search
-        for name, module in model.named_modules():
-            if isinstance(module, nn.ModuleList) and ("layers" in name or "h" in name or "blocks" in name):
-                return module
-        
-        raise CompressionNotSupportedError("Could not locate the nn.ModuleList containing transformer layers.")
-
     def _prune_layers(self, model: Any, layers_to_drop: List[int]) -> Any:
-        layers = self._get_layer_list(model)
+        layers = get_transformer_layers(model)
         keep_indices = [i for i in range(len(layers)) if i not in layers_to_drop]
         
         # Create a new ModuleList with only the kept layers
