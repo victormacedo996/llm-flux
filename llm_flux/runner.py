@@ -21,6 +21,7 @@ def run_pipeline(
     pipeline: Pipeline,
     dag_output: Path | str = "pipeline_dag.png",
     result_output: Path | str | None = None,
+    html_report_output: Path | str | None = None,
     skip_confirmation: bool = False,
     show_dag: bool = True,
 ) -> PipelineRunResult:
@@ -28,12 +29,14 @@ def run_pipeline(
     Build the DAG, render it, ask for confirmation, then execute.
 
     Args:
-        pipeline:          Validated Pipeline instance (registry must be populated).
-        dag_output:        Path where the DAG PNG is saved.
-        result_output:     Path for the JSON result file.  Defaults to
-                           ``"{pipeline.name}_result.json"``.
-        skip_confirmation: If True, skip the [y/N] prompt (useful for scripts/CI).
-        show_dag:          If True, attempt to display the DAG interactively.
+        pipeline:               Validated Pipeline instance (registry must be populated).
+        dag_output:             Path where the DAG PNG is saved.
+        result_output:          Path for the JSON result file. Defaults to
+                                ``"{pipeline.name}_result.json"``.
+        html_report_output:     Path for the interactive HTML report. If provided,
+                                an HTML report will be generated after execution.
+        skip_confirmation:      If True, skip the [y/N] prompt (useful for scripts/CI).
+        show_dag:               If True, attempt to display the DAG interactively.
 
     Returns:
         PipelineRunResult with all profiling records.
@@ -80,5 +83,10 @@ def run_pipeline(
     out_path = Path(result_output or f"{pipeline.name}_result.json")
     result.save_json(out_path)
     logger.info(f"\n  Full results saved → {out_path.resolve()}")
+
+    # ── 6. Generate HTML report (optional) ──────────────────────────────────
+    if html_report_output:
+        html_path = result.save_html_report(path=html_report_output, dag_image_path=dag_output)
+        logger.info(f"  HTML report saved → {html_path.resolve()}")
 
     return result

@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 from loguru import logger
 
-TINY_MODE = False  # Set to True for lightning-fast end-to-end pipeline validation
+TINY_MODE = True  # Set to True for lightning-fast end-to-end pipeline validation
 
 import torch
 HAS_GPU = torch.cuda.is_available()
@@ -31,13 +31,13 @@ if TINY_MODE:
     CALIBRATION_SAMPLES = 2
     USE_FP16 = False # CPU is slow with FP16 emulation
 else:
-    MODEL_ID = "TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T"
-    DATASET_SOURCE = "allenai/c4"
-    C4_SAMPLES_FOR_HEALING = 3
-    LIMIT_TEST_SAMPLES = 3
+    MODEL_ID = "Qwen/Qwen3-0.6B"
+    DATASET_SOURCE = "dummy_dataset.jsonl"
+    C4_SAMPLES_FOR_HEALING = 2
+    LIMIT_TEST_SAMPLES = 2
     NUM_BENCHMARK_RUNS = 1
     HEALING_STEPS = 1
-    CALIBRATION_SAMPLES = 3
+    CALIBRATION_SAMPLES = 2
     USE_FP16 = HAS_GPU # Only use FP16 if we have a GPU
 
 
@@ -192,7 +192,7 @@ def run_experiment_for_ratio(ratio: float):
     pipeline = Pipeline(
         name=f"llama_1b_prune_{ratio*100:.0f}pct_awq",
         description=(
-            f"1B LLaMA Depth+MLP Pruning ({ratio*100:.0f}%) -> LoRA Healing (C4) -> AWQ Pipeline."
+            f"1B LLaMA Depth Pruning ({ratio*100:.0f}%) -> LoRA Healing (C4) -> AWQ Pipeline."
         ),
         steps=[
             PipelineStep(label="Load Model",            port=model_handle),
@@ -208,13 +208,16 @@ def run_experiment_for_ratio(ratio: float):
     )
 
     # ── 7. Execute ─────────────────────────────────────────────────────────────
+    result_report_output = Path(__file__).parent.parent / f"compression_results" / pipeline.name
     result = run_pipeline(
         pipeline=pipeline,
-        dag_output=f"dag_prune_{ratio*100:.0f}pct.png",
-        result_output=f"result_prune_{ratio*100:.0f}pct.json",
+        dag_output=f"{result_report_output}/dag_graph.png",
+        result_output=f"{result_report_output}/results.json",
+        html_report_output=f"{result_report_output}/report.html",
         skip_confirmation=True,  # Automated experiment script
         show_dag=False,          # Don't block on diagram window
     )
+    
     return result
 
 if __name__ == "__main__":

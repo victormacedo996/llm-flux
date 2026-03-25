@@ -8,10 +8,14 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
 from llm_flux.core.profiling import ProfilingResult
+
+if TYPE_CHECKING:
+    from llm_flux.core.html_reporter import generate_html_report
 
 
 class PipelineRunResult(BaseModel):
@@ -86,3 +90,24 @@ class PipelineRunResult(BaseModel):
         out = Path(path)
         out.write_text(self.model_dump_json(indent=2))
         return out
+
+    def save_html_report(self, path: str | Path = "pipeline_report.html", dag_image_path: str | Path | None = None) -> Path:
+        """
+        Generate an interactive HTML report from the pipeline results.
+        
+        Creates a single self-contained HTML file with:
+        - Jinja2-templated structure
+        - Apache ECharts visualizations
+        - Embedded DAG image
+        - Model architecture information
+        - Hardware profiling data
+        
+        Args:
+            path: Output path for the HTML file (default: pipeline_report.html)
+            dag_image_path: Optional path to DAG PNG image to embed in report
+            
+        Returns:
+            Path: The absolute path to the generated HTML file
+        """
+        from llm_flux.core.html_reporter import generate_html_report
+        return generate_html_report(self, output_path=path, dag_image_path=dag_image_path)

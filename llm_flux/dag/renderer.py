@@ -8,6 +8,7 @@ from pathlib import Path
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import networkx as nx
+import os
 
 KIND_COLORS: dict[str, str] = {
     "load":     "#4A90D9",  # blue
@@ -86,6 +87,7 @@ def render_dag(
     ax.axis("off")
 
     plt.tight_layout()
+    os.makedirs(output_path.parent, exist_ok=True)
     plt.savefig(output_path, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
     if show:
         plt.show()
