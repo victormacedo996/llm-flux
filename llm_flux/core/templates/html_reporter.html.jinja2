@@ -286,11 +286,22 @@
             </div>
         </header>
 
-        {% if dag_image_data_url %}
+        {% if dag_image_data_url or dag_echarts_data_json %}
         <h2 class="section-title">📊 Pipeline Execution DAG</h2>
         <div class="dag-container">
+            {% if dag_echarts_data_json %}
+            <div id="dagChart" style="width: 100%; height: 400px;"></div>
+            {% else %}
             <img src="{{ dag_image_data_url }}" alt="Pipeline DAG">
+            {% endif %}
         </div>
+        {% endif %}
+
+        {% if profiling_data_json %}
+            <h2 class="section-title">⚙️ Hardware Information</h2>
+            <div class="table-container">
+                <div class="details-grid" id="hardwareContent"></div>
+            </div>
         {% endif %}
 
         <h2 class="section-title">📈 Performance Metrics</h2>
@@ -322,8 +333,7 @@
                         <th>P50 Latency</th>
                         <th>P95 Latency</th>
                         <th>P99 Latency</th>
-                        <th>GPU Memory</th>
-                        <th>CPU Memory</th>
+                        <th>Test Name</th>
                         <th class="ppl-hidden">Perplexity</th>
                     </tr>
                 </thead>
@@ -351,6 +361,7 @@
         const perplexities = JSON.parse({{ perplexities_json | tojson | safe }});
         const hasPerplexity = JSON.parse({{ has_perplexity | lower }});
         const profilingData = JSON.parse({{ profiling_data_json | tojson | safe }});
+        const dagEchartsData = {{ dag_echarts_data_json | default('null') | safe }};
 
         document.getElementById('reportTime').textContent = new Date().toLocaleString();
 
@@ -395,6 +406,13 @@
                 }
             ]
         });
+
+        // Render ECharts DAG if available
+        if (dagEchartsData) {
+            const dagChart = echarts.init(document.getElementById('dagChart'));
+            dagChart.setOption(dagEchartsData);
+            window.addEventListener('resize', () => dagChart.resize());
+        }
 
         // Memory Chart
         const memoryChart = echarts.init(document.getElementById('memoryChart'));
@@ -469,8 +487,7 @@
                     <td class="text-center">${record.latency_p50.toFixed(2)} ms</td>
                     <td class="text-center">${record.latency_p95.toFixed(2)} ms</td>
                     <td class="text-center">${record.latency_p99.toFixed(2)} ms</td>
-                    <td class="text-center">${gpuMemory}</td>
-                    <td class="text-center">${cpuMemory}</td>
+                    <td class="text-center">${record.test_name}</td>
                     <td class="text-center ppl-hidden">${pplValue}</td>
                 `;
 
@@ -549,36 +566,6 @@
                 `;
             }
 
-            if (record.hardware && Object.keys(record.hardware).length > 0) {
-                html += `
-                    <div class="detail-section">
-                        <h5>⚙️ Hardware Information</h5>
-                        <div class="detail-item">
-                            <div class="detail-label">CPU</div>
-                            <div class="detail-value">${record.hardware.cpu_name}</div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">CPU Cores</div>
-                            <div class="detail-value">${record.hardware.cpu_cores}</div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">Total RAM</div>
-                            <div class="detail-value">${record.hardware.total_ram_gb.toFixed(1)} GB</div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">GPU Available</div>
-                            <div class="detail-value">${record.hardware.cuda_available ? 'Yes' : 'No'}</div>
-                        </div>
-                        ${record.hardware.gpu_count > 0 ? `
-                            <div class="detail-item">
-                                <div class="detail-label">GPU Count</div>
-                                <div class="detail-value">${record.hardware.gpu_count}</div>
-                            </div>
-                        ` : ''}
-                    </div>
-                `;
-            }
-
             detailsContent.innerHTML = html;
             document.getElementById('detailsPanel').classList.add('active');
         }
@@ -587,11 +574,70 @@
             document.getElementById('detailsPanel').classList.remove('active');
         }
 
+        function renderHardwareSection() {
+    const hardwareContent = document.getElementById('hardwareContent');
+    if (!hardwareContent) return;
+
+    const firstRecordWithHardware = profilingData.find(
+        record => record.hardware && Object.keys(record.hardware).length > 0
+    );
+
+    if (!firstRecordWithHardware) {
+        hardwareContent.innerHTML = `
+            <div class="detail-section">
+                <div class="detail-item">
+                    <div class="detail-label">Hardware</div>
+                    <div class="detail-value">No hardware information available</div>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    const hardware = firstRecordWithHardware.hardware;
+
+    hardwareContent.innerHTML = `
+        <div class="detail-section">
+            <h5>⚙️ Hardware Information</h5>
+
+            <div class="detail-item">
+                <div class="detail-label">CPU</div>
+                <div class="detail-value">${hardware.cpu_name ?? '—'}</div>
+            </div>
+
+            <div class="detail-item">
+                <div class="detail-label">CPU Cores</div>
+                <div class="detail-value">${hardware.cpu_cores ?? '—'}</div>
+            </div>
+
+            <div class="detail-item">
+                <div class="detail-label">Total RAM</div>
+                <div class="detail-value">
+                    ${hardware.total_ram_gb !== undefined && hardware.total_ram_gb !== null
+                        ? hardware.total_ram_gb.toFixed(1) + ' GB'
+                        : '—'}
+                </div>
+            </div>
+
+            <div class="detail-item">
+                <div class="detail-label">GPU Available</div>
+                <div class="detail-value">${hardware.cuda_available ? 'Yes' : 'No'}</div>
+            </div>
+
+            <div class="detail-item">
+                <div class="detail-label">GPU Count</div>
+                <div class="detail-value">${hardware.gpu_count ?? '—'}</div>
+            </div>
+        </div>
+    `;
+    }
+
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') closeDetails();
         });
 
         buildMetricsTable();
+        renderHardwareSection();
         window.addEventListener('resize', () => {
             latencyChart.resize();
             memoryChart.resize();

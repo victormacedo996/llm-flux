@@ -91,23 +91,24 @@ class PipelineRunResult(BaseModel):
         out.write_text(self.model_dump_json(indent=2))
         return out
 
-    def save_html_report(self, path: str | Path = "pipeline_report.html", dag_image_path: str | Path | None = None) -> Path:
+    def save_html_report(self, path: str | Path = "pipeline_report.html", dag_image_path: str | Path | None = None, dag_echarts_data: dict | None = None) -> Path:
         """
         Generate an interactive HTML report from the pipeline results.
         
         Creates a single self-contained HTML file with:
         - Jinja2-templated structure
         - Apache ECharts visualizations
-        - Embedded DAG image
+        - Embedded DAG image or interactive ECharts graph
         - Model architecture information
         - Hardware profiling data
         
         Args:
             path: Output path for the HTML file (default: pipeline_report.html)
             dag_image_path: Optional path to DAG PNG image to embed in report
+            dag_echarts_data: Optional ECharts data dict for interactive DAG visualization
             
         Returns:
             Path: The absolute path to the generated HTML file
         """
         from llm_flux.core.html_reporter import generate_html_report
-        return generate_html_report(self, output_path=path, dag_image_path=dag_image_path)
+        return generate_html_report(self, output_path=path, dag_image_path=dag_image_path, dag_echarts_data=dag_echarts_data)

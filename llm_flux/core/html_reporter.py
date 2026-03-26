@@ -14,7 +14,7 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from jinja2 import Template, Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader
 
 if TYPE_CHECKING:
     from llm_flux.core.results import PipelineRunResult
@@ -26,6 +26,7 @@ def generate_html_report(
     result: PipelineRunResult,
     output_path: str | Path = "pipeline_report.html",
     dag_image_path: str | Path | None = None,
+    dag_echarts_data: dict | None = None,
 ) -> Path:
     """
     Generate an interactive HTML report from a PipelineRunResult.
@@ -34,13 +35,14 @@ def generate_html_report(
         result: The PipelineRunResult object from pipeline execution.
         output_path: Where to save the HTML file.
         dag_image_path: Optional path to DAG PNG image to embed.
+        dag_echarts_data: Optional ECharts data dict for interactive DAG visualization.
 
     Returns:
         Path: The absolute path to the generated HTML file.
     """
     output_path = Path(output_path)
     dag_image_b64 = _encode_image_to_base64(dag_image_path)
-    html_content = _render_template(result, dag_image_b64)
+    html_content = _render_template(result, dag_image_b64, dag_echarts_data)
     output_path.write_text(html_content)
     return output_path.absolute()
 
@@ -87,7 +89,7 @@ def _extract_hardware_info(record: Any) -> dict[str, Any]:
     }
 
 
-def _render_template(result: PipelineRunResult, dag_image_data_url: str) -> str:
+def _render_template(result: PipelineRunResult, dag_image_data_url: str, dag_echarts_data: dict | None) -> str:
     """Render HTML using Jinja2 template."""
     # Extract metrics
     stages = [r.pipeline_stage for r in result.profiling_records]
@@ -116,6 +118,7 @@ def _render_template(result: PipelineRunResult, dag_image_data_url: str) -> str:
             "perplexity": record.accuracy.perplexity if record.accuracy else None,
             "model": _extract_model_info(record),
             "hardware": _extract_hardware_info(record),
+            "test_name": record.accuracy.task_name if record.accuracy else None
         })
 
     template_dir = Path(__file__).parent / "templates"
@@ -138,6 +141,7 @@ def _render_template(result: PipelineRunResult, dag_image_data_url: str) -> str:
         has_perplexity=has_perplexity,
         profiling_data_json=json.dumps(profiling_data),
         dag_image_data_url=dag_image_data_url,
+        dag_echarts_data_json=json.dumps(dag_echarts_data) if dag_echarts_data else None,
     )
 
 

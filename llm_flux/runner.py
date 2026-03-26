@@ -14,7 +14,7 @@ from llm_flux.core.pipeline import Pipeline
 from llm_flux.core.results import PipelineRunResult
 from llm_flux.dag.builder import build_dag
 from llm_flux.dag.executor import PipelineExecutor
-from llm_flux.dag.renderer import render_dag
+from llm_flux.dag.renderer import render_dag, render_dag_echarts
 
 
 def run_pipeline(
@@ -51,6 +51,7 @@ def run_pipeline(
     logger.info(f"{'═' * 60}\n")
 
     render_dag(dag, output_path=dag_output, show=show_dag)
+    dag_echarts_data = render_dag_echarts(dag)
 
     # ── 3. Print step summary ───────────────────────────────────────────────
     print("\nPlanned execution order:")
@@ -86,7 +87,11 @@ def run_pipeline(
 
     # ── 6. Generate HTML report (optional) ──────────────────────────────────
     if html_report_output:
-        html_path = result.save_html_report(path=html_report_output, dag_image_path=dag_output)
+        html_path = result.save_html_report(
+            path=html_report_output,
+            dag_image_path=dag_output,
+            dag_echarts_data=dag_echarts_data,
+        )
         logger.info(f"  HTML report saved → {html_path.resolve()}")
 
     return result

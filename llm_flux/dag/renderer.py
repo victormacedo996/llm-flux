@@ -1,5 +1,5 @@
 """
-dag/renderer.py — Renders a pipeline DAG to a PNG file using matplotlib.
+dag/renderer.py — Renders a pipeline DAG to a PNG file using matplotlib or ECharts-compatible data.
 """
 from __future__ import annotations
 
@@ -95,3 +95,106 @@ def render_dag(
 
     print(f"  DAG saved → {output_path.resolve()}")
     return output_path.resolve()
+
+
+def render_dag_echarts(dag: nx.DiGraph) -> dict:
+    """
+    Render the DAG as ECharts-compatible data structure.
+
+    Args:
+        dag: DiGraph produced by ``build_dag()``.
+
+    Returns:
+        Dict containing ECharts option for graph visualization.
+    """
+    # Compute positions using networkx
+    try:
+        pos = nx.nx_agraph.graphviz_layout(dag, prog="dot")
+    except Exception:
+        pos = nx.spring_layout(dag, seed=42)
+
+    # Scale positions to fit ECharts canvas (assuming 800x600 canvas)
+    if pos:
+        x_coords = [p[0] for p in pos.values()]
+        y_coords = [p[1] for p in pos.values()]
+        x_min, x_max = min(x_coords), max(x_coords)
+        y_min, y_max = min(y_coords), max(y_coords)
+        
+        # Avoid division by zero
+        x_range = x_max - x_min if x_max != x_min else 1
+        y_range = y_max - y_min if y_max != y_min else 1
+        
+        # Scale to fit within 100-700 range for x, 100-500 for y
+        scaled_pos = {}
+        for node, (x, y) in pos.items():
+            scaled_x = 100 + (x - x_min) / x_range * 600
+            scaled_y = 100 + (y - y_min) / y_range * 400
+            scaled_pos[node] = (scaled_x, scaled_y)
+        pos = scaled_pos
+
+    # Prepare nodes data
+    nodes_data = []
+    for node in dag.nodes:
+        x, y = pos.get(node, (300, 300))  # fallback position
+        kind = dag.nodes[node]["kind"]
+        color = KIND_COLORS.get(kind, "#888888")
+        nodes_data.append({
+            "name": dag.nodes[node]["label"],
+            "x": x,
+            "y": y,
+            "itemStyle": {"color": color},
+            "symbolSize": 50,
+        })
+
+    # Prepare links data
+    links_data = []
+    for source, target in dag.edges:
+        source_label = dag.nodes[source]["label"]
+        target_label = dag.nodes[target]["label"]
+        links_data.append({
+            "source": source_label,
+            "target": target_label,
+            "lineStyle": {
+                "width": 2,
+                "curveness": 0.1
+            }
+        })
+
+    # Build ECharts option
+    option = {
+        "title": {
+            "text": f"Pipeline: {dag.graph.get('name', '')}",
+            "left": "center",
+            "textStyle": {"color": "#333"}
+        },
+        "tooltip": {},
+        "animationDurationUpdate": 1500,
+        "animationEasingUpdate": "quinticInOut",
+        "series": [
+            {
+                "type": "graph",
+                "layout": "none",
+                "symbolSize": 50,
+                "roam": True,
+                "label": {
+                    "show": True,
+                    "fontSize": 12,
+                    "color": "#333"
+                },
+                "edgeSymbol": ["circle", "arrow"],
+                "edgeSymbolSize": [4, 10],
+                "edgeLabel": {
+                    "fontSize": 12
+                },
+                "data": nodes_data,
+                "links": links_data,
+                "lineStyle": {
+                    "opacity": 0.9,
+                    "width": 2,
+                    "curveness": 0
+                }
+            }
+        ]
+    }
+    
+    return option
