@@ -22,9 +22,9 @@ class DatasetConfig(BaseModel):
     source: str  # HF dataset name OR local directory / file path
     split: str = "train"
     subset: str | None = None  # HF dataset config name (e.g. "ARC-Challenge")
-    max_samples: int | None = None  # None = use all available
+    max_samples: int | None = None  # None = use all available; otherwise first N rows
     streaming: bool = False
-    seed: int = 42
+    seed: int = 42  # kept for backward compatibility (not used by first-N mode)
 
     @model_validator(mode="after")
     def _max_samples_positive(self) -> "DatasetConfig":

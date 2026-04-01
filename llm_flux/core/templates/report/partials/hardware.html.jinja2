@@ -1,0 +1,15 @@
+{% set ns = namespace(has_hw=false) %}
+{% for pd in profiling_data_json | from_json %}
+  {% if pd.hardware and pd.hardware.cpu_name %}
+    {% set ns.has_hw = true %}
+  {% endif %}
+{% endfor %}
+
+<h2 class="section-title">⚙️ Hardware Information</h2>
+<div class="table-container">
+    <div class="hardware-grid" id="hardwareContent">
+        <div class="hw-subgrid" id="hwCpu"></div>
+        <div class="hw-subgrid" id="hwGpu"></div>
+        <div class="hw-subgrid" id="hwRam"></div>
+    </div>
+</div>

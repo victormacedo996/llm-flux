@@ -1,0 +1,72 @@
+<h2 class="section-title">⏱️ Inference Benchmarks</h2>
+<div class="accordion" id="inferenceAccordion">
+{% for pd in profiling_data_json | from_json %}
+{% set idx = loop.index0 %}
+{% set inf = pd.inference %}
+{% if inf %}
+<div class="accordion-item">
+    <h2 class="accordion-header">
+        <button class="accordion-button{% if not loop.first %} collapsed{% endif %}"
+                type="button" data-bs-toggle="collapse"
+                data-bs-target="#inferenceBody{{ idx }}"
+                aria-expanded="{{ 'true' if loop.first else 'false' }}">
+            ⏱️ {{ pd.stage }}
+            {% if inf.tokens_per_second %}
+            <span class="ms-3 badge-inline">{{ '%.1f'|format(inf.tokens_per_second) }} tok/s</span>
+            {% endif %}
+        </button>
+    </h2>
+    <div id="inferenceBody{{ idx }}" class="accordion-collapse collapse{% if loop.first %} show{% endif %}">
+        <div class="accordion-body">
+            <div class="stat-grid">
+                <div class="stat-card stat-card--primary">
+                    <div class="stat-label">Avg Latency</div>
+                    <div class="stat-value">{{ '%.2f'|format(inf.avg_time_ms) }}<span class="stat-unit"> ms</span></div>
+                </div>
+                <div class="stat-card stat-card--secondary">
+                    <div class="stat-label">Std Dev</div>
+                    <div class="stat-value">{{ '%.2f'|format(inf.std_time_ms) }}<span class="stat-unit"> ms</span></div>
+                </div>
+                <div class="stat-card stat-card--success">
+                    <div class="stat-label">Min Latency</div>
+                    <div class="stat-value">{{ '%.2f'|format(inf.min_time_ms) }}<span class="stat-unit"> ms</span></div>
+                </div>
+                <div class="stat-card stat-card--secondary">
+                    <div class="stat-label">P5 Latency</div>
+                    <div class="stat-value">{{ '%.2f'|format(inf.p5_time_ms) }}<span class="stat-unit"> ms</span></div>
+                </div>
+                <div class="stat-card stat-card--secondary">
+                    <div class="stat-label">P50 Latency</div>
+                    <div class="stat-value">{{ '%.2f'|format(inf.p50_time_ms) }}<span class="stat-unit"> ms</span></div>
+                </div>
+                <div class="stat-card stat-card--secondary">
+                    <div class="stat-label">P95 Latency</div>
+                    <div class="stat-value">{{ '%.2f'|format(inf.p95_time_ms) }}<span class="stat-unit"> ms</span></div>
+                </div>
+                <div class="stat-card stat-card--secondary">
+                    <div class="stat-label">P99 Latency</div>
+                    <div class="stat-value">{{ '%.2f'|format(inf.p99_time_ms) }}<span class="stat-unit"> ms</span></div>
+                </div>
+                <div class="stat-card stat-card--danger">
+                    <div class="stat-label">Max Latency</div>
+                    <div class="stat-value">{{ '%.2f'|format(inf.max_time_ms) }}<span class="stat-unit"> ms</span></div>
+                </div>
+                <div class="stat-card stat-card--warning">
+                    <div class="stat-label">Tokens / s</div>
+                    <div class="stat-value">{{ '%.1f'|format(inf.tokens_per_second) }}</div>
+                </div>
+                <div class="stat-card stat-card--secondary">
+                    <div class="stat-label">Runs</div>
+                    <div class="stat-value">{{ inf.num_runs }}</div>
+                </div>
+                <div class="stat-card stat-card--secondary">
+                    <div class="stat-label">Generated Tokens</div>
+                    <div class="stat-value">{{ inf.generated_tokens }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endfor %}
+</div>

@@ -30,6 +30,7 @@ from llm_flux.profiling.types.benchmark import (
     ComputePerplexityForDatasetReturn,
     PerplexityTestResult,
 )
+from llm_flux.profiling.types.stats import DescriptiveStats
 
 __all__ = [
     "CPUInfo", "GPUInfo", "GPUMemoryInfo", "GPUProperties",
@@ -41,4 +42,5 @@ __all__ = [
     "CompareBenchmark", "InferencePerformanceInfo",
     "AccuracyTestResult", "ComputePerplexityForBatchReturn",
     "ComputePerplexityForDatasetReturn", "PerplexityTestResult",
+    "DescriptiveStats",
 ]

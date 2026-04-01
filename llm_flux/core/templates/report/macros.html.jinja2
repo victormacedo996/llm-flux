@@ -1,0 +1,49 @@
+{% macro meta_item(label, value) -%}
+<div class="meta-item">
+    <span class="meta-label">{{ label }}</span>
+    <span class="meta-value">{{ value }}</span>
+</div>
+{%- endmacro %}
+
+{% macro chart_container(title, chart_id) -%}
+<div class="chart-container">
+    <h3>{{ title }}</h3>
+    <div class="chart-wrapper" id="{{ chart_id }}"></div>
+</div>
+{%- endmacro %}
+
+{% macro stat_card(label, value, unit='', color='primary') -%}
+<div class="stat-card stat-card--{{ color }}">
+    <div class="stat-label">{{ label }}</div>
+    <div class="stat-value">{{ value }}<span class="stat-unit">{{ unit }}</span></div>
+</div>
+{%- endmacro %}
+
+{% macro badge_delta(value, baseline, lower_is_better=false, fmt='%.2f') -%}
+{%- if baseline is not none and baseline != 0 -%}
+  {%- set delta = ((value - baseline) / baseline * 100) -%}
+  {%- if lower_is_better -%}
+    {%- set cls = 'badge-improve' if delta < 0 else 'badge-regress' -%}
+  {%- else -%}
+    {%- set cls = 'badge-improve' if delta > 0 else 'badge-regress' -%}
+  {%- endif -%}
+  <span class="comparison-badge {{ cls }}">{{ '%+.1f'|format(delta) }}%</span>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro accordion_item(title, body_id, icon='', open=false) -%}
+<div class="accordion-item">
+    <h2 class="accordion-header">
+        <button class="accordion-button{% if not open %} collapsed{% endif %}"
+                type="button" data-bs-toggle="collapse"
+                data-bs-target="#{{ body_id }}" aria-expanded="{{ 'true' if open else 'false' }}">
+            {{ icon }} {{ title }}
+        </button>
+    </h2>
+    <div id="{{ body_id }}" class="accordion-collapse collapse{% if open %} show{% endif %}">
+        <div class="accordion-body">
+            {{ caller() }}
+        </div>
+    </div>
+</div>
+{%- endmacro %}

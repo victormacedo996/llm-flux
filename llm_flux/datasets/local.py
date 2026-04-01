@@ -41,8 +41,6 @@ class LocalDatasetAdapter(DatasetPort):
         )
 
         if self.config.max_samples is not None:
-            dataset = dataset.shuffle(seed=self.config.seed).select(
-                range(min(self.config.max_samples, len(dataset)))
-            )
+            dataset = dataset.select(range(min(self.config.max_samples, len(dataset))))
 
         return dataset

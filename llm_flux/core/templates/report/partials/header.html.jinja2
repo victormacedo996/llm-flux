@@ -1,0 +1,12 @@
+{% from 'report/macros.html.jinja2' import meta_item %}
+<header>
+    <h1>🔬 Pipeline Compression Report</h1>
+    <p class="mb-0"><strong>{{ pipeline_name }}</strong></p>
+    <p class="mb-0">{{ pipeline_description }}</p>
+    <div class="header-meta">
+        {{ meta_item('Duration', '%.2f'|format(duration_seconds) ~ 's') }}
+        {{ meta_item('Pipeline Stages', num_stages) }}
+        {{ meta_item('Started', started_at) }}
+        {{ meta_item('Finished', finished_at) }}
+    </div>
+</header>

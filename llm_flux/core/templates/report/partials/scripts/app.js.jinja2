@@ -1,0 +1,14 @@
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeDetails();
+});
+
+buildMetricsTable();
+renderHardwareSection();
+window.addEventListener('resize', () => {
+    latencyChart.resize();
+    tpsChart.resize();
+    memoryChart.resize();
+    if (hasPerplexity) {
+        echarts.getInstanceByDom(document.getElementById('perplexityChart')).resize();
+    }
+});

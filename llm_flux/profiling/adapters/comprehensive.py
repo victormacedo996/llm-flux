@@ -25,7 +25,7 @@ from llm_flux.profiling.hardware_profiler import HardwareProfiler
 from llm_flux.profiling.inference_benchmarker import InferencePerformanceBenchmarker
 from llm_flux.profiling.llm_profiler import LLMProfiler
 from llm_flux.profiling.model_benchmarker import ModelPerformanceBenchmarker
-from llm_flux.profiling.types.benchmark import PerplexityTestResult
+from llm_flux.profiling.types.benchmark import AccuracyTestResult, PerplexityTestResult
 from llm_flux.profiling.types.llm import EstimateMemory
 
 
@@ -96,7 +96,16 @@ class ComprehensiveProfilingAdapter(ProfilingPort):
             extra["llm_profile"] = llm_info.model_dump()
 
         # ── Inference benchmark ───────────────────────────────────────────────
-        latency = LatencyMetrics(mean_ms=0.0, p50_ms=0.0, p95_ms=0.0, p99_ms=0.0)
+        latency = LatencyMetrics(
+            mean_ms=0.0,
+            std_ms=0.0,
+            min_ms=0.0,
+            p5_ms=0.0,
+            p50_ms=0.0,
+            p95_ms=0.0,
+            p99_ms=0.0,
+            max_ms=0.0,
+        )
         memory = MemoryMetrics()
 
         if self.config.run_inference_benchmark:
@@ -115,12 +124,15 @@ class ComprehensiveProfilingAdapter(ProfilingPort):
             extra["inference"] = inf.model_dump()
 
             avg_ms = inf.avg_time * 1000
-            max_ms = inf.max_time * 1000
             latency = LatencyMetrics(
                 mean_ms=avg_ms,
-                p50_ms=avg_ms,   # single-prompt run → approximate p50 as mean
-                p95_ms=max_ms,
-                p99_ms=max_ms,
+                std_ms=inf.std_time * 1000,
+                min_ms=inf.min_time * 1000,
+                p5_ms=inf.p5_time * 1000,
+                p50_ms=inf.p50_time * 1000,
+                p95_ms=inf.p95_time * 1000,
+                p99_ms=inf.p99_time * 1000,
+                max_ms=inf.max_time * 1000,
             )
             if torch.cuda.is_available():
                 memory = MemoryMetrics(
@@ -148,6 +160,14 @@ class ComprehensiveProfilingAdapter(ProfilingPort):
                     perplexity=ppl_results[0].result.mean_perplexity,
                     task_name=ppl_results[0].test_name,
                 )
+            else:
+                score_results = [r for r in results if isinstance(r, AccuracyTestResult)]
+                if score_results:
+                    top = score_results[0]
+                    accuracy = AccuracyMetrics(
+                        task_score=top.accuracy,
+                        task_name=f"{top.test_name}:{top.metric_name}",
+                    )
 
         return ProfilingResult(
             profiler_name=self.config.name,

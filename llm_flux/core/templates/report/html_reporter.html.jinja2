@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% include 'report/partials/head.html.jinja2' %}
+</head>
+<body>
+    <div class="container-fluid">
+        {% include 'report/partials/header.html.jinja2' %}
+        {% include 'report/partials/dag.html.jinja2' %}
+        {% include 'report/partials/hardware.html.jinja2' %}
+        {% include 'report/partials/charts.html.jinja2' %}
+        {% include 'report/partials/metrics_table.html.jinja2' %}
+        {% include 'report/partials/inference_detail.html.jinja2' %}
+        {% include 'report/partials/benchmarks_detail.html.jinja2' %}
+        {% include 'report/partials/llm_profile.html.jinja2' %}
+        {% include 'report/partials/memory_estimation.html.jinja2' %}
+        {% include 'report/partials/details_panel.html.jinja2' %}
+        {% include 'report/partials/footer.html.jinja2' %}
+    </div>
+
+    {% include 'report/partials/scripts.html.jinja2' %}
+</body>
+</html>

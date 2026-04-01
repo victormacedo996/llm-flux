@@ -1,0 +1,10 @@
+{% if dag_image_data_url or dag_echarts_data_json %}
+<h2 class="section-title">📊 Pipeline Execution DAG</h2>
+<div class="dag-container">
+    {% if dag_echarts_data_json %}
+    <div id="dagChart" style="width: 100%; height: 400px;"></div>
+    {% else %}
+    <img src="{{ dag_image_data_url }}" alt="Pipeline DAG">
+    {% endif %}
+</div>
+{% endif %}

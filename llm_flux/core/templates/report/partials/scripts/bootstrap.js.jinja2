@@ -1,0 +1,24 @@
+const stages = JSON.parse({{ stages_json | tojson | safe }});
+const latenciesMean = JSON.parse({{ latencies_mean_json | tojson | safe }});
+const latenciesStd = JSON.parse({{ latencies_std_json | tojson | safe }});
+const latenciesMin = JSON.parse({{ latencies_min_json | tojson | safe }});
+const latenciesP5 = JSON.parse({{ latencies_p5_json | tojson | safe }});
+const latenciesP50 = JSON.parse({{ latencies_p50_json | tojson | safe }});
+const latenciesP95 = JSON.parse({{ latencies_p95_json | tojson | safe }});
+const latenciesP99 = JSON.parse({{ latencies_p99_json | tojson | safe }});
+const latenciesMax = JSON.parse({{ latencies_max_json | tojson | safe }});
+const gpuPeaks = JSON.parse({{ gpu_peaks_json | tojson | safe }});
+const perplexities = JSON.parse({{ perplexities_json | tojson | safe }});
+const hasPerplexity = JSON.parse({{ has_perplexity | lower }});
+const profilingData = JSON.parse({{ profiling_data_json | tojson | safe }});
+const dagEchartsData = {{ dag_echarts_data_json | default('null') | safe }};
+
+document.getElementById('reportTime').textContent = new Date().toLocaleString();
+
+const chartColors = {
+    primary: '#0d6efd',
+    success: '#198754',
+    danger: '#dc3545',
+    warning: '#ffc107',
+    secondary: '#6c757d',
+};

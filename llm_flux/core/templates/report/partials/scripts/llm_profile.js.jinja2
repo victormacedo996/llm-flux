@@ -1,0 +1,38 @@
+// Architecture graph rendering
+// Renders ECharts graphs stored as data attributes on .arch-graph-container elements.
+// Graphs are initialised lazily when the containing Bootstrap accordion opens.
+
+var _archInstances = {};
+
+function initArchGraph(containerId) {
+    if (_archInstances[containerId]) return;
+    var el = document.getElementById(containerId);
+    if (!el) return;
+    var rawData = el.getAttribute('data-graph');
+    if (!rawData) return;
+    var option;
+    try { option = JSON.parse(rawData); } catch(e) { return; }
+    if (!option || !option.series) return;
+
+    var chart = echarts.init(el);
+    chart.setOption(option);
+    _archInstances[containerId] = chart;
+    window.addEventListener('resize', function() { chart.resize(); });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.accordion-collapse').forEach(function(collapseEl) {
+        collapseEl.addEventListener('show.bs.collapse', function() {
+            var graphEl = collapseEl.querySelector('.arch-graph-container');
+            if (graphEl) {
+                setTimeout(function() { initArchGraph(graphEl.id); }, 50);
+            }
+        });
+        if (collapseEl.classList.contains('show')) {
+            var graphEl = collapseEl.querySelector('.arch-graph-container');
+            if (graphEl) {
+                setTimeout(function() { initArchGraph(graphEl.id); }, 100);
+            }
+        }
+    });
+});

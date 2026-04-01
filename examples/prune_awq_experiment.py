@@ -158,6 +158,7 @@ def run_experiment_for_ratio(ratio: float):
                 streaming=not TINY_MODE,
                 max_samples=C4_SAMPLES_FOR_HEALING,
             ),
+            trainer_class=None,
             max_steps=HEALING_STEPS,
             learning_rate=2e-4,
             per_device_train_batch_size=2,

@@ -1,0 +1,123 @@
+<h2 class="section-title">🔬 LLM Architecture Profile</h2>
+<div class="accordion" id="llmProfileAccordion">
+{% for pd in profiling_data_json | from_json %}
+{% set idx = loop.index0 %}
+{% set m = pd.model %}
+{% if m and m.model_class %}
+<div class="accordion-item">
+    <h2 class="accordion-header">
+        <button class="accordion-button{% if not loop.first %} collapsed{% endif %}"
+                type="button" data-bs-toggle="collapse"
+                data-bs-target="#llmBody{{ idx }}"
+                aria-expanded="{{ 'true' if loop.first else 'false' }}">
+            🔬 {{ pd.stage }}
+            <span class="ms-3 badge-inline">{{ m.model_class }}</span>
+            <span class="ms-2 badge-inline">{{ '%.2f'|format(m.total_parameters_millions) }}M params</span>
+            <span class="ms-2 badge-inline">{{ m.total_layers }} layers</span>
+        </button>
+    </h2>
+    <div id="llmBody{{ idx }}" class="accordion-collapse collapse{% if loop.first %} show{% endif %}">
+        <div class="accordion-body">
+
+            {# ── Parameter summary ── #}
+            <h6 class="profile-section-title">Parameters</h6>
+            <div class="stat-grid mb-4">
+                <div class="stat-card stat-card--primary">
+                    <div class="stat-label">Total</div>
+                    <div class="stat-value">{{ '%.3f'|format(m.total_parameters_billions) }}<span class="stat-unit"> B</span></div>
+                </div>
+                <div class="stat-card stat-card--success">
+                    <div class="stat-label">Trainable</div>
+                    <div class="stat-value">{{ '{:,}'.format(m.trainable_parameters) }}</div>
+                </div>
+                <div class="stat-card stat-card--secondary">
+                    <div class="stat-label">Frozen</div>
+                    <div class="stat-value">{{ '{:,}'.format(m.non_trainable_parameters) }}</div>
+                </div>
+                <div class="stat-card stat-card--secondary">
+                    <div class="stat-label">Device</div>
+                    <div class="stat-value">{{ m.device }}</div>
+                </div>
+                <div class="stat-card stat-card--secondary">
+                    <div class="stat-label">PyTorch</div>
+                    <div class="stat-value">{{ m.pytorch_version }}</div>
+                </div>
+            </div>
+
+            {# ── Data-type breakdown ── #}
+            {% if m.by_dtype_counts %}
+            <h6 class="profile-section-title">Parameter dtype breakdown</h6>
+            <div class="precision-table-wrap mb-4">
+                <table class="precision-table">
+                    <thead>
+                        <tr><th>dtype</th><th>Count</th><th>Bytes</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for dtype, cnt in m.by_dtype_counts.items() %}
+                        <tr>
+                            <td><code>{{ dtype }}</code></td>
+                            <td>{{ '{:,}'.format(cnt) }}</td>
+                            <td>{{ '{:,}'.format(m.by_dtype_bytes.get(dtype, 0)) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+
+            {# ── Architecture ── #}
+            <h6 class="profile-section-title">Architecture ({{ m.total_layers }} leaf layers, max depth {{ m.max_depth }})</h6>
+            <div class="layer-type-grid mb-4">
+                {% for ltype, cnt in m.layer_types_count.items() %}
+                <div class="layer-type-chip">
+                    <span class="layer-type-name">{{ ltype }}</span>
+                    <span class="layer-type-count">{{ cnt }}</span>
+                </div>
+                {% endfor %}
+            </div>
+
+            {# ── Attention layers ── #}
+            {% if m.attention_layers %}
+            <h6 class="profile-section-title">Attention Layers ({{ m.num_attention_layers }})</h6>
+            <div class="precision-table-wrap mb-4">
+                <table class="precision-table">
+                    <thead>
+                        <tr><th>Name</th><th>Type</th><th>Head Dim</th><th>Heads</th><th>Embed Dim</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for al in m.attention_layers %}
+                        <tr>
+                            <td><code>{{ al.name }}</code></td>
+                            <td>{{ al.type }}</td>
+                            <td>{{ al.head_dim if al.head_dim is defined else '—' }}</td>
+                            <td>{{ al.num_attention_heads if al.num_attention_heads is defined else (al.num_heads if al.num_heads is defined else '—') }}</td>
+                            <td>{{ al.embed_dim if al.embed_dim is defined else '—' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+
+            {# ── Architecture graph (ECharts) ── #}
+            {% if m.arch_graph %}
+            <h6 class="profile-section-title">Architecture Graph
+                {% set meta = m.arch_graph._meta %}
+                {% if meta %}
+                <span class="graph-meta-note">
+                    — showing {{ meta.total_rendered }} nodes
+                    ({{ meta.num_blocks }} transformer block{{ 's' if meta.num_blocks != 1 else '' }},
+                    {{ meta.total_original }} leaf layers total)
+                </span>
+                {% endif %}
+            </h6>
+            <div class="arch-graph-container" id="archGraph{{ idx }}"
+                 data-graph="{{ m.arch_graph | tojson | forceescape }}"></div>
+            {% endif %}
+
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endfor %}
+</div>

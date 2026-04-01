@@ -29,8 +29,6 @@ class HFDatasetAdapter(DatasetPort):
             if self.config.streaming:
                 dataset = dataset.take(self.config.max_samples)
             else:
-                dataset = dataset.shuffle(seed=self.config.seed).select(
-                    range(min(self.config.max_samples, len(dataset)))
-                )
+                dataset = dataset.select(range(min(self.config.max_samples, len(dataset))))
 
         return dataset

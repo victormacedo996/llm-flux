@@ -1,0 +1,80 @@
+function showDetails(index) {
+    var record = profilingData[index];
+    var detailsContent = document.getElementById('detailsContent');
+    var html = '';
+
+    html += '<div class="detail-section"><h5>\u23F1\uFE0F Latency Metrics</h5>';
+    html += detailItem('Mean Latency', record.latency_mean.toFixed(2) + ' ms');
+    html += detailItem('Std Dev',      record.latency_std.toFixed(2)  + ' ms');
+    html += detailItem('Min Latency',  record.latency_min.toFixed(2)  + ' ms');
+    html += detailItem('P5 Latency',   record.latency_p5.toFixed(2)   + ' ms');
+    html += detailItem('P50 Latency',  record.latency_p50.toFixed(2)  + ' ms');
+    html += detailItem('P95 Latency',  record.latency_p95.toFixed(2)  + ' ms');
+    html += detailItem('P99 Latency',  record.latency_p99.toFixed(2)  + ' ms');
+    html += detailItem('Max Latency',  record.latency_max.toFixed(2)  + ' ms');
+    html += '</div>';
+
+    html += '<div class="detail-section"><h5>\uD83D\uDCBE Memory</h5>';
+    html += detailItem('GPU Peak', record.gpu_memory ? record.gpu_memory.toFixed(1) + ' MB' : '\u2014');
+    html += detailItem('CPU Peak', record.cpu_memory ? record.cpu_memory.toFixed(1) + ' MB' : '\u2014');
+    html += '</div>';
+
+    if (record.inference && record.inference.tokens_per_second) {
+        var inf = record.inference;
+        html += '<div class="detail-section"><h5>\uD83D\uDE80 Inference Timing</h5>';
+        html += detailItem('Avg Time',         inf.avg_time_ms.toFixed(2) + ' ms');
+        html += detailItem('Std Time',         inf.std_time_ms.toFixed(2) + ' ms');
+        html += detailItem('Min Time',         inf.min_time_ms.toFixed(2) + ' ms');
+        html += detailItem('P5 Time',          inf.p5_time_ms.toFixed(2) + ' ms');
+        html += detailItem('P50 Time',         inf.p50_time_ms.toFixed(2) + ' ms');
+        html += detailItem('P95 Time',         inf.p95_time_ms.toFixed(2) + ' ms');
+        html += detailItem('P99 Time',         inf.p99_time_ms.toFixed(2) + ' ms');
+        html += detailItem('Max Time',         inf.max_time_ms.toFixed(2) + ' ms');
+        html += detailItem('Tokens/s',         inf.tokens_per_second.toFixed(1));
+        html += detailItem('Runs',             String(inf.num_runs));
+        html += detailItem('Generated Tokens', String(inf.generated_tokens));
+        html += '</div>';
+    }
+
+    if (record.perplexity !== null && record.perplexity !== undefined) {
+        html += '<div class="detail-section"><h5>\uD83D\uDCCA Accuracy</h5>';
+        html += detailItem('Perplexity', record.perplexity.toFixed(3));
+        html += '</div>';
+    }
+
+    if (record.benchmarks && record.benchmarks.length > 0) {
+        html += '<div class="detail-section"><h5>\uD83E\uDDEA Benchmark Scores</h5>';
+        record.benchmarks.forEach(function(b) {
+            if (b.kind === 'perplexity') {
+                html += detailItem(b.test_name + ' PPL', b.mean_perplexity.toFixed(3));
+            } else if (b.kind === 'accuracy') {
+                html += detailItem(b.test_name + ' Acc', (b.accuracy * 100).toFixed(2) + '%');
+            }
+        });
+        html += '</div>';
+    }
+
+    if (record.model && record.model.model_class) {
+        var mod = record.model;
+        html += '<div class="detail-section"><h5>\uD83E\uDD16 Model Info</h5>';
+        html += detailItem('Model Class',       mod.model_class);
+        html += detailItem('Device',            mod.device);
+        html += detailItem('Total Params',      mod.total_parameters_millions.toFixed(2) + 'M');
+        html += detailItem('Trainable',         mod.trainable_parameters.toLocaleString());
+        html += detailItem('Total Layers',      String(mod.total_layers));
+        html += detailItem('Attention Layers',  String(mod.num_attention_layers));
+        if (mod.by_dtype_counts) {
+            Object.entries(mod.by_dtype_counts).forEach(function(entry) {
+                html += detailItem(entry[0], entry[1].toLocaleString() + ' params');
+            });
+        }
+        html += '</div>';
+    }
+
+    detailsContent.innerHTML = html;
+    document.getElementById('detailsPanel').classList.add('active');
+}
+
+function closeDetails() {
+    document.getElementById('detailsPanel').classList.remove('active');
+}

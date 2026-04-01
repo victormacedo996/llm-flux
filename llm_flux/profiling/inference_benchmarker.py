@@ -68,15 +68,22 @@ class InferencePerformanceBenchmarker:
             times.append(time.perf_counter() - start)
 
         generated_tokens = last_output.size(1) - inputs.input_ids.size(1)
-        avg = float(np.mean(times))
+        arr = np.array(times, dtype=float)
+        avg = float(np.mean(arr))
 
         return InferencePerformanceInfo(
             avg_time=avg,
-            min_time=float(np.min(times)),
-            max_time=float(np.max(times)),
+            std_time=float(np.std(arr, ddof=1)) if len(arr) > 1 else 0.0,
+            min_time=float(np.min(arr)),
+            p5_time=float(np.percentile(arr, 5)),
+            p50_time=float(np.percentile(arr, 50)),
+            p95_time=float(np.percentile(arr, 95)),
+            p99_time=float(np.percentile(arr, 99)),
+            max_time=float(np.max(arr)),
             tokens_per_second=generated_tokens / avg if avg > 0 else 0.0,
             num_runs=num_runs,
             generated_tokens=generated_tokens,
+            raw_times=list(arr),
         )
 
     def compare_models_inference(

@@ -1,0 +1,35 @@
+// Build metrics table
+function buildMetricsTable() {
+    const tbody = document.getElementById('metricsTableBody');
+    profilingData.forEach((record, idx) => {
+        const row = document.createElement('tr');
+        row.className = 'record-row';
+        row.dataset.index = idx;
+        row.style.cursor = 'pointer';
+
+        const pplValue = record.perplexity ? 
+            `<span class="badge badge-success">${record.perplexity.toFixed(3)}</span>` : 
+            `<span class="badge badge-secondary">—</span>`;
+
+        const gpuMemory = record.gpu_memory ? `${record.gpu_memory.toFixed(1)} MB` : '—';
+        const cpuMemory = record.cpu_memory ? `${record.cpu_memory.toFixed(1)} MB` : '—';
+
+        row.innerHTML = `
+            <td class="text-center">${idx + 1}</td>
+            <td><strong>${record.stage}</strong></td>
+            <td class="text-center">${record.latency_mean.toFixed(2)} ms</td>
+            <td class="text-center">${record.latency_std.toFixed(2)} ms</td>
+            <td class="text-center">${record.latency_min.toFixed(2)} ms</td>
+            <td class="text-center">${record.latency_p5.toFixed(2)} ms</td>
+            <td class="text-center">${record.latency_p50.toFixed(2)} ms</td>
+            <td class="text-center">${record.latency_p95.toFixed(2)} ms</td>
+            <td class="text-center">${record.latency_p99.toFixed(2)} ms</td>
+            <td class="text-center">${record.latency_max.toFixed(2)} ms</td>
+            <td class="text-center">${record.test_name}</td>
+            <td class="text-center ppl-hidden">${pplValue}</td>
+        `;
+
+        row.addEventListener('click', () => showDetails(idx));
+        tbody.appendChild(row);
+    });
+}

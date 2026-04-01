@@ -1,0 +1,10 @@
+{% from 'report/macros.html.jinja2' import chart_container %}
+<h2 class="section-title">📈 Performance Metrics</h2>
+<div class="charts-grid">
+    {{ chart_container('⏱️ Latency Progression', 'latencyChart') }}
+    {{ chart_container('� Tokens per Second', 'tpsChart') }}
+    {{ chart_container('�💾 GPU Memory Usage', 'memoryChart') }}
+    {% if has_perplexity %}
+    {{ chart_container('📊 Model Perplexity', 'perplexityChart') }}
+    {% endif %}
+</div>

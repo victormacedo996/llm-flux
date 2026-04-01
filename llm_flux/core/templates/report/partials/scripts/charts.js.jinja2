@@ -1,0 +1,73 @@
+var tpsValues = JSON.parse({{ tps_json | tojson | safe }});
+
+// Latency Chart
+var latencyChart = echarts.init(document.getElementById('latencyChart'));
+latencyChart.setOption({
+    tooltip: { trigger: 'axis' },
+    legend: { textStyle: { fontSize: 12 } },
+    grid: { left: 60, right: 20, top: 30, bottom: 50, containLabel: true },
+    xAxis: { type: 'category', data: stages, axisLabel: { interval: 0, rotate: 45 } },
+    yAxis: { type: 'value', name: 'Latency (ms)' },
+    series: [
+        { name: 'Mean Latency', data: latenciesMean, type: 'line', smooth: true,
+          itemStyle: { color: chartColors.primary }, areaStyle: { color: 'rgba(13,110,253,0.1)' }, symbolSize: 8 },
+                { name: 'P5 Latency',   data: latenciesP5,   type: 'line', smooth: true,
+                    itemStyle: { color: chartColors.secondary }, lineStyle: { type: 'dotted' }, symbolSize: 5 },
+        { name: 'P95 Latency',  data: latenciesP95,  type: 'line', smooth: true,
+                    itemStyle: { color: chartColors.danger  }, lineStyle: { type: 'dashed' }, symbolSize: 6 },
+                { name: 'P99 Latency',  data: latenciesP99,  type: 'line', smooth: true,
+                    itemStyle: { color: '#8b0000' }, lineStyle: { type: 'dashdot' }, symbolSize: 5 }
+    ]
+});
+
+// Tokens-per-Second Chart
+var tpsChart = echarts.init(document.getElementById('tpsChart'));
+tpsChart.setOption({
+    tooltip: { trigger: 'axis' },
+    grid: { left: 60, right: 20, top: 30, bottom: 50, containLabel: true },
+    xAxis: { type: 'category', data: stages, axisLabel: { interval: 0, rotate: 45 } },
+    yAxis: { type: 'value', name: 'Tokens / s' },
+    series: [{
+        name: 'Tokens/s', data: tpsValues, type: 'bar',
+        itemStyle: { color: chartColors.success, borderRadius: [5,5,0,0] },
+        label: { show: true, position: 'top',
+                 formatter: function(p) { return p.value.toFixed(0); } }
+    }]
+});
+
+// Render ECharts DAG if available
+if (dagEchartsData) {
+    var dagChart = echarts.init(document.getElementById('dagChart'));
+    dagChart.setOption(dagEchartsData);
+    window.addEventListener('resize', function() { dagChart.resize(); });
+}
+
+// Memory Chart
+var memoryChart = echarts.init(document.getElementById('memoryChart'));
+memoryChart.setOption({
+    tooltip: { trigger: 'axis' },
+    legend: { textStyle: { fontSize: 12 } },
+    grid: { left: 60, right: 20, top: 30, bottom: 50, containLabel: true },
+    xAxis: { type: 'category', data: stages, axisLabel: { interval: 0, rotate: 45 } },
+    yAxis: { type: 'value', name: 'Memory (MB)' },
+    series: [{
+        name: 'GPU Peak Memory', data: gpuPeaks, type: 'bar',
+        itemStyle: { color: chartColors.success, borderRadius: [5,5,0,0] }
+    }]
+});
+
+// Perplexity Chart
+if (hasPerplexity) {
+    var perplexityChart = echarts.init(document.getElementById('perplexityChart'));
+    perplexityChart.setOption({
+        tooltip: { trigger: 'axis' },
+        legend: { textStyle: { fontSize: 12 } },
+        grid: { left: 60, right: 20, top: 30, bottom: 50, containLabel: true },
+        xAxis: { type: 'category', data: stages, axisLabel: { interval: 0, rotate: 45 } },
+        yAxis: { type: 'value', name: 'Perplexity' },
+        series: [{
+            name: 'Model Perplexity', data: perplexities, type: 'line', smooth: true,
+            itemStyle: { color: chartColors.warning }, areaStyle: { color: 'rgba(255,193,7,0.1)' }, symbolSize: 8
+        }]
+    });
+}

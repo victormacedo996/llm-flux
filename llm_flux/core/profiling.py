@@ -27,9 +27,13 @@ class LatencyMetrics(BaseModel):
     """Inference latency statistics across benchmark runs (milliseconds)."""
 
     mean_ms: float
+    std_ms: float = 0.0
+    min_ms: float = 0.0
+    p5_ms: float = 0.0
     p50_ms: float
     p95_ms: float
     p99_ms: float
+    max_ms: float = 0.0
 
 
 class AccuracyMetrics(BaseModel):

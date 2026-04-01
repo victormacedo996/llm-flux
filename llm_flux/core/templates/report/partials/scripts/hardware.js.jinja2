@@ -1,0 +1,60 @@
+function detailItem(label, value) {
+    return '<div class="detail-item"><div class="detail-label">' + label +
+           '</div><div class="detail-value">' + value + '</div></div>';
+}
+
+function renderHardwareSection() {
+    var cpuEl = document.getElementById('hwCpu');
+    var gpuEl = document.getElementById('hwGpu');
+    var ramEl = document.getElementById('hwRam');
+    if (!cpuEl) return;
+
+    var rec = profilingData.find(function(r) {
+        return r.hardware && r.hardware.cpu_name;
+    });
+    if (!rec) { cpuEl.innerHTML = '<p style="color:#999">No hardware data.</p>'; return; }
+    var hw = rec.hardware;
+
+    var cpuFreqGhz = hw.cpu_max_freq_mhz ? (hw.cpu_max_freq_mhz / 1000).toFixed(2) : '\u2014';
+    cpuEl.innerHTML = '<h5>\uD83D\uDDA5\uFE0F CPU</h5>' +
+        detailItem('Model',           hw.cpu_name           || '\u2014') +
+        detailItem('Architecture',    hw.cpu_architecture   || '\u2014') +
+        detailItem('Physical Cores',  String(hw.cpu_physical_cores || '\u2014')) +
+        detailItem('Logical Cores',   String(hw.cpu_total_cores    || '\u2014')) +
+        detailItem('Max Frequency',   cpuFreqGhz + ' GHz') +
+        detailItem('Platform',        hw.cpu_platform       || '\u2014');
+
+    if (hw.cuda_available && hw.gpu_devices && hw.gpu_devices.length > 0) {
+        var gpuHtml = '<h5>\u26A1 GPU</h5>';
+        gpuHtml += detailItem('CUDA Version',  hw.cuda_version  || '\u2014');
+        gpuHtml += detailItem('cuDNN Version', hw.cudnn_version || '\u2014');
+        gpuHtml += detailItem('Device Count',  String(hw.gpu_count));
+        hw.gpu_devices.forEach(function(g, i) {
+            var mi = g.memory_info || {};
+            var pr = g.properties  || {};
+            gpuHtml += '<div style="margin-top:10px;padding-top:8px;border-top:1px dashed #dee2e6">';
+            gpuHtml += detailItem('GPU ' + i, g.device_name || '\u2014');
+            gpuHtml += detailItem('Total VRAM',    (mi.total_gb     != null ? mi.total_gb     : '\u2014') + ' GB');
+            gpuHtml += detailItem('Free VRAM',     (mi.free_gb      != null ? mi.free_gb      : '\u2014') + ' GB');
+            gpuHtml += detailItem('Allocated',     (mi.allocated_gb != null ? mi.allocated_gb : '\u2014') + ' GB');
+            gpuHtml += detailItem('Compute Cap.',  pr.major != null ? pr.major + '.' + pr.minor : '\u2014');
+            gpuHtml += detailItem('Multiprocessors', pr.multi_processor_count != null ? String(pr.multi_processor_count) : '\u2014');
+            gpuHtml += detailItem('Warp Size',     pr.warp_size != null ? String(pr.warp_size) : '\u2014');
+            gpuHtml += '</div>';
+        });
+        gpuEl.innerHTML = gpuHtml;
+    } else {
+        gpuEl.innerHTML = '<h5>\u26A1 GPU</h5>' + detailItem('CUDA Available', 'No') +
+            '<p style="color:#999;font-size:0.85rem;margin-top:8px">Model ran on CPU.</p>';
+    }
+
+    var usedGb  = (hw.total_ram_gb && hw.available_ram_gb) ? (hw.total_ram_gb - hw.available_ram_gb).toFixed(2) : '\u2014';
+    var usedPct = (hw.total_ram_gb && hw.available_ram_gb) ? ((1 - hw.available_ram_gb / hw.total_ram_gb) * 100).toFixed(1) + '%' : '\u2014';
+    ramEl.innerHTML = '<h5>\uD83E\uDDE0 RAM</h5>' +
+        detailItem('Total',      (hw.total_ram_gb     != null ? hw.total_ram_gb     : '\u2014') + ' GB') +
+        detailItem('Available',  (hw.available_ram_gb != null ? hw.available_ram_gb : '\u2014') + ' GB') +
+        detailItem('Free',       (hw.free_ram_gb      != null ? hw.free_ram_gb      : '\u2014') + ' GB') +
+        detailItem('Used',       usedGb + ' GB (' + usedPct + ')') +
+        detailItem('Swap Total', (hw.swap_total_gb    != null ? hw.swap_total_gb    : '\u2014') + ' GB') +
+        detailItem('Swap Free',  (hw.swap_free_gb     != null ? hw.swap_free_gb     : '\u2014') + ' GB');
+}
