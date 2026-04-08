@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 from loguru import logger
 
-TINY_MODE = True  # Set to True for lightning-fast end-to-end pipeline validation
+TINY_MODE = False  # Set to True for lightning-fast end-to-end pipeline validation
 
 import torch
 HAS_GPU = torch.cuda.is_available()
@@ -32,7 +32,7 @@ if TINY_MODE:
     USE_FP16 = False # CPU is slow with FP16 emulation
 else:
     MODEL_ID = "Qwen/Qwen3-0.6B"
-    DATASET_SOURCE = "dummy_dataset.jsonl"
+    DATASET_SOURCE = "allenai/c4"
     C4_SAMPLES_FOR_HEALING = 2
     LIMIT_TEST_SAMPLES = 2
     NUM_BENCHMARK_RUNS = 1

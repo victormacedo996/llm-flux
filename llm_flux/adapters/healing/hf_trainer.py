@@ -85,6 +85,31 @@ class HFTrainerAdapter(HealingPort):
             remove_columns=["text"] if "text" in (raw_dataset.column_names or ["text"]) else None
         )
 
+        # ── Materialise streaming datasets ────────────────────────────────────
+        # IterableDatasets are lazy: .map() sets up a pipeline but does NO work.
+        # The DataLoader would then stream (and re-stream) data from the internet
+        # during training, causing apparent hangs and repeated downloads.
+        # Converting to a regular in-memory Dataset avoids all of that.
+        try:
+            from datasets import IterableDataset as _IterableDataset, Dataset as _Dataset
+            if isinstance(tokenized_dataset, _IterableDataset):
+                logger.info("  🔄 Materialising streaming dataset into memory (avoids lazy I/O during training)...")
+                tokenized_dataset = _Dataset.from_list(list(tokenized_dataset))
+                logger.info(f"  ✔ Materialised {len(tokenized_dataset)} samples.")
+        except ImportError:
+            pass
+
+        # Warn if there are too few samples to complete even a single optimiser step
+        min_needed = cfg.per_device_train_batch_size * cfg.gradient_accumulation_steps
+        if hasattr(tokenized_dataset, "__len__") and len(tokenized_dataset) < min_needed:
+            logger.warning(
+                f"  ⚠️  Dataset has only {len(tokenized_dataset)} sample(s), but "
+                f"per_device_train_batch_size={cfg.per_device_train_batch_size} × "
+                f"gradient_accumulation_steps={cfg.gradient_accumulation_steps} requires "
+                f"at least {min_needed} samples to complete one optimiser step. "
+                "Consider reducing gradient_accumulation_steps or increasing max_samples."
+            )
+
         # ── Apply LoRA if requested ───────────────────────────────────────────
         if cfg.lora:
             logger.info("  🔧 Applying LoRA (PEFT)...")
