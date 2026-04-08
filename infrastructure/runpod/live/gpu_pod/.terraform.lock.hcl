@@ -2,7 +2,8 @@
 # Manual edits may be lost in future updates.
 
 provider "registry.terraform.io/decentralized-infrastructure/runpod" {
-  version = "1.0.1"
+  version     = "1.0.1"
+  constraints = "~> 1.0"
   hashes = [
     "h1:njZD2XZ7yDb4vxTvpuhV41MICdxcJtHzJEIYzrFA+h4=",
     "zh:04828ac1b536dd54115a0b8784d6836d99abc5f542a8e18cbd2aea39c7cfe00a",
