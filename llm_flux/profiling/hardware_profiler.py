@@ -12,6 +12,7 @@ from datetime import datetime
 import psutil
 import torch
 import torch.cuda
+from loguru import logger
 
 from llm_flux.profiling.types.hardware import (
     CPUInfo,
@@ -75,7 +76,7 @@ class HardwareProfiler:
             try:
                 gpus.append(self._get_gpu_info(device_id))
             except Exception as exc:  # pragma: no cover
-                print(f"Warning: could not retrieve info for GPU {device_id}: {exc}")
+                logger.warning(f"Could not retrieve info for GPU {device_id}: {exc}")
 
         return SystemGPUInfo(
             cuda_available=True,
@@ -149,14 +150,16 @@ class HardwareProfiler:
 
     def _get_gpu_properties(self, device_id: int) -> GPUProperties:
         p = torch.cuda.get_device_properties(device_id)
+        max_block_dim = list(getattr(p, "max_block_dim", []) or [])
+        max_grid_dim = list(getattr(p, "max_grid_dim", []) or [])
         return GPUProperties(
             name=p.name, major=p.major, minor=p.minor,
             total_memory=p.total_memory,
             multi_processor_count=p.multi_processor_count,
             max_threads_per_multi_processor=p.max_threads_per_multi_processor,
             max_threads_per_block=p.max_threads_per_block,
-            max_block_dim=list(p.max_block_dim),
-            max_grid_dim=list(p.max_grid_dim),
+            max_block_dim=max_block_dim,
+            max_grid_dim=max_grid_dim,
             warp_size=p.warp_size,
         )
 

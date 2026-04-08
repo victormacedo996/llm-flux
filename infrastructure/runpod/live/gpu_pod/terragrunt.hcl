@@ -7,12 +7,12 @@ terraform {
   source = "../../modules/runpod_pod"
 }
 
-dependency "network_volume" {
-  config_path = "../network_volume"
-  mock_outputs = {
-    network_volume_id = "mock-network-volume-id"
-  }
-}
+# dependency "network_volume" {
+#   config_path = "../network_volume"
+#   mock_outputs = {
+#     network_volume_id = "mock-network-volume-id"
+#   }
+# }
 
 inputs = {
   name  = "ag-test-gpu-pod"
@@ -24,7 +24,7 @@ inputs = {
   cloud_type      = "SECURE"   # "SECURE" for Secure Cloud
   gpu_type_ids    = ["NVIDIA GeForce RTX 4090"]
   gpu_count       = 1
-  data_center_ids = ["EUR-NO-1"]
+  data_center_ids = ["US-NC-1"]
 
 #   | value must be one of 'NVIDIA
 #   │ GeForce RTX 4090', 'NVIDIA A40', 'NVIDIA RTX A5000', 'NVIDIA GeForce RTX
@@ -49,11 +49,11 @@ inputs = {
 
   # ── Storage ───────────────────────────────────────────────────────────────────
   volume_in_gb         = 20
-  volume_mount_path    = "/workspace"
-  container_disk_in_gb = 10
+  # volume_mount_path    = "/workspace"
+  # container_disk_in_gb = 10
 
   # Attach an existing network volume (leave empty to skip).
-  network_volume_id = dependency.network_volume.outputs.network_volume_id
+  # network_volume_id = dependency.network_volume.outputs.network_volume_id
 
   # ── Networking ────────────────────────────────────────────────────────────────
   support_public_ip = true

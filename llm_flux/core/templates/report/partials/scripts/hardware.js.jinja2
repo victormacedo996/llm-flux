@@ -43,6 +43,14 @@ function renderHardwareSection() {
             gpuHtml += '</div>';
         });
         gpuEl.innerHTML = gpuHtml;
+    } else if (hw.cuda_available) {
+        var gpuHtml = '<h5>\u26A1 GPU</h5>';
+        gpuHtml += detailItem('CUDA Available',  'Yes');
+        gpuHtml += detailItem('CUDA Version',  hw.cuda_version  || '\u2014');
+        gpuHtml += detailItem('cuDNN Version', hw.cudnn_version || '\u2014');
+        gpuHtml += detailItem('Device Count',  String(hw.gpu_count));
+        gpuHtml += '<p style="color:#f0ad4e;font-size:0.85rem;margin-top:8px">Per-device details could not be retrieved.</p>';
+        gpuEl.innerHTML = gpuHtml;
     } else {
         gpuEl.innerHTML = '<h5>\u26A1 GPU</h5>' + detailItem('CUDA Available', 'No') +
             '<p style="color:#999;font-size:0.85rem;margin-top:8px">Model ran on CPU.</p>';
