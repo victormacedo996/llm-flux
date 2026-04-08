@@ -219,6 +219,9 @@ hf_cache
 healing_output
 compression_results/
 
+# Terragrunt secrets file (contains sensitive credentials — never commit)
+*.secrets.hcl
+
 # Local .terraform directories
 .terraform/
 
