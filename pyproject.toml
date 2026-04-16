@@ -18,12 +18,14 @@ dependencies = [
     "psutil>=6.0",
     "loguru>=0.7",
     "numpy>=1.26",
+    "lm-eval>=0.4.11",
 ]
 
 [project.optional-dependencies]
 gptq         = ["auto-gptq>=0.7"]
 awq          = ["autoawq>=0.2"]
 bitsandbytes = ["bitsandbytes>=0.43"]
+lm-eval      = ["lm_eval[hf]"]
 cli          = ["typer>=0.12"]
 dev          = [
     "pytest>=8.2",

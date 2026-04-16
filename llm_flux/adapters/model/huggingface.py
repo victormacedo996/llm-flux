@@ -8,6 +8,8 @@ from __future__ import annotations
 from loguru import logger
 
 from llm_flux.core.model import ModelHandle, ModelSource
+from typing import Any
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
 class HFModelHandle(ModelHandle):
@@ -27,7 +29,7 @@ class HFModelHandle(ModelHandle):
         return self.source.identifier.split("/")[-1]
 
     def load(self) -> object:
-        from transformers import AutoModelForCausalLM, AutoTokenizer
+        
 
         kwargs = {
             "pretrained_model_name_or_path": self.source.identifier,
@@ -64,3 +66,11 @@ class HFModelHandle(ModelHandle):
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         logger.info(f"  Model '{self.name}' unloaded.")
+    
+
+    def get_model_instance(self) -> Any:
+        """Return the loaded model instance, if already loaded."""
+        if self._model is None:
+            raise RuntimeError("Call load() before accessing the model instance.")
+        return self._model
+

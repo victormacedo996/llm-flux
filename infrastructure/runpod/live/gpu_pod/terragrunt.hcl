@@ -24,10 +24,10 @@ inputs = {
   cloud_type      = "SECURE"   # "SECURE" for Secure Cloud
   gpu_type_ids    = ["NVIDIA GeForce RTX 4090"]
   gpu_count       = 1
-  data_center_ids = ["US-NC-1"]
+  data_center_ids = ["EUR-NO-1"]
 
-#   | value must be one of 'NVIDIA
-#   │ GeForce RTX 4090', 'NVIDIA A40', 'NVIDIA RTX A5000', 'NVIDIA GeForce RTX
+#   | value must be one of 'NVIDIA GeForce RTX 4090', 'NVIDIA A40', 'NVIDIA RTX A5000', 
+#   | 'NVIDIA GeForce RTX
 #   │ 5090', 'NVIDIA H100 80GB HBM3', 'NVIDIA GeForce RTX 3090', 'NVIDIA RTX
 #   │ A4500', 'NVIDIA L40S', 'NVIDIA H200', 'NVIDIA L4', 'NVIDIA RTX 6000 Ada
 #   │ Generation', 'NVIDIA A100-SXM4-80GB', 'NVIDIA RTX 4000 Ada Generation',

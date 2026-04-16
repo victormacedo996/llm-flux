@@ -15,6 +15,8 @@
             <span class="ms-3 badge-inline">{{ b.test_name }}: PPL {{ '%.2f'|format(b.mean_perplexity) }}</span>
             {% elif b.kind == 'accuracy' %}
             <span class="ms-3 badge-inline">{{ b.test_name }}: Acc {{ '%.1f'|format(b.accuracy * 100) }}%</span>
+            {% elif b.kind == 'lm_eval' %}
+            <span class="ms-3 badge-inline">{{ b.test_name }}: {{ '%.4f'|format(b.accuracy) }}</span>
             {% endif %}
             {% endfor %}
         </button>
@@ -94,6 +96,35 @@
                     </div>
                 </div>
                 {% endif %}
+                {% elif b.kind == 'lm_eval' %}
+                <div class="stat-grid">
+                    <div class="stat-card stat-card--success">
+                        <div class="stat-label">{{ b.metric_name | upper }}</div>
+                        <div class="stat-value">{{ '%.4f'|format(b.accuracy) }}{% if b.higher_is_better %}<span class="stat-unit">↑</span>{% else %}<span class="stat-unit">↓</span>{% endif %}</div>
+                    </div>
+                    {% if b.stderr is not none %}
+                    <div class="stat-card stat-card--secondary">
+                        <div class="stat-label">Std Error</div>
+                        <div class="stat-value">± {{ '%.4f'|format(b.stderr) }}</div>
+                    </div>
+                    {% endif %}
+                    <div class="stat-card stat-card--secondary">
+                        <div class="stat-label">Task</div>
+                        <div class="stat-value">{{ b.task_name }}</div>
+                    </div>
+                    <div class="stat-card stat-card--secondary">
+                        <div class="stat-label">N-shot</div>
+                        <div class="stat-value">{{ b.num_fewshot }}</div>
+                    </div>
+                    <div class="stat-card stat-card--secondary">
+                        <div class="stat-label">Eff. Samples</div>
+                        <div class="stat-value">{{ b.num_examples }}</div>
+                    </div>
+                    <div class="stat-card stat-card--secondary">
+                        <div class="stat-label">Higher is Better</div>
+                        <div class="stat-value">{{ b.higher_is_better }}</div>
+                    </div>
+                </div>
                 {% endif %}
             </div>
             {% endfor %}

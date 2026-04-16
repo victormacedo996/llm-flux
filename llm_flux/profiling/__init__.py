@@ -8,6 +8,10 @@ from llm_flux.profiling.adapters.comprehensive import (
     ComprehensiveProfilingAdapter,
     ComprehensiveProfilingConfig,
 )
+from llm_flux.adapters.profiling import (
+    LmEvalAdapter,
+    LmEvalConfig,
+)
 
 __all__ = [
     "HardwareProfiler",
@@ -16,4 +20,6 @@ __all__ = [
     "ModelPerformanceBenchmarker",
     "ComprehensiveProfilingAdapter",
     "ComprehensiveProfilingConfig",
+    "LmEvalAdapter",
+    "LmEvalConfig",
 ]

@@ -7,6 +7,7 @@ Converts PipelineRunResult to a self-contained HTML file with:
 - Embedded DAG image
 - Model architecture and hardware information
 """
+
 from __future__ import annotations
 
 import base64
@@ -77,6 +78,7 @@ def _encode_image_to_base64(image_path: str | Path | None) -> str:
 
 # ── Architecture graph builder (truncated, ECharts) ─────────────────────────
 
+
 def _block_index(name: str) -> int | None:
     """Return the transformer block index if the layer lives inside one."""
     m = re.search(r"layers\.(\d+)\.", name)
@@ -119,13 +121,15 @@ def _build_arch_graph_data(layer_details: list[dict[str, Any]]) -> dict[str, Any
     if block0:
         rendered_layers.extend(block0)
     if num_blocks > 1:
-        rendered_layers.append({
-            "name": "__ellipsis__",
-            "type": "Placeholder",
-            "parameters": 0,
-            "depth": 0,
-            "_label": f"\u22ef {num_blocks - 1} more block{'s' if num_blocks - 1 > 1 else ''}",
-        })
+        rendered_layers.append(
+            {
+                "name": "__ellipsis__",
+                "type": "Placeholder",
+                "parameters": 0,
+                "depth": 0,
+                "_label": f"\u22ef {num_blocks - 1} more block{'s' if num_blocks - 1 > 1 else ''}",
+            }
+        )
     rendered_layers.extend(post)
 
     # Assign x/y positions — horizontal layout, evenly spaced
@@ -138,7 +142,7 @@ def _build_arch_graph_data(layer_details: list[dict[str, Any]]) -> dict[str, Any
         label = ld.get("_label") or node_name.split(".")[-1] or node_name
         layer_type = ld.get("type", "Unknown")
         params = ld.get("parameters", 0)
-        symbol_size = max(14, min(44, 14 + int((params ** 0.35) * 0.5))) if params else 16
+        symbol_size = max(14, min(44, 14 + int((params**0.35) * 0.5))) if params else 16
         color = _LAYER_COLORS.get(layer_type, _COLOR_DEFAULT)
 
         tooltip_lines = [
@@ -151,25 +155,29 @@ def _build_arch_graph_data(layer_details: list[dict[str, Any]]) -> dict[str, Any
         if ld.get("vocab_size"):
             tooltip_lines.append(f"Vocab: {ld['vocab_size']} \u00d7 {ld.get('embedding_dim', '?')}")
 
-        echarts_nodes.append({
-            "id": str(i),
-            "name": label,
-            "x": round(i * x_step, 1),
-            "y": 0,
-            "symbolSize": symbol_size,
-            "itemStyle": {"color": color},
-            "tooltip": {"formatter": "<br>".join(tooltip_lines)},
-            "category": layer_type,
-        })
+        echarts_nodes.append(
+            {
+                "id": str(i),
+                "name": label,
+                "x": round(i * x_step, 1),
+                "y": 0,
+                "symbolSize": symbol_size,
+                "itemStyle": {"color": color},
+                "tooltip": {"formatter": "<br>".join(tooltip_lines)},
+                "category": layer_type,
+            }
+        )
 
     # Sequential edges
     echarts_edges: list[dict] = []
     for i in range(len(echarts_nodes) - 1):
-        echarts_edges.append({
-            "source": str(i),
-            "target": str(i + 1),
-            "lineStyle": {"color": "#ccc", "width": 1.5},
-        })
+        echarts_edges.append(
+            {
+                "source": str(i),
+                "target": str(i + 1),
+                "lineStyle": {"color": "#ccc", "width": 1.5},
+            }
+        )
 
     # Unique categories for legend
     seen_types: list[str] = []
@@ -184,7 +192,9 @@ def _build_arch_graph_data(layer_details: list[dict[str, Any]]) -> dict[str, Any
 
     return {
         "tooltip": {"show": True, "enterable": True},
-        "legend": [{"data": [c["name"] for c in categories], "top": 5, "textStyle": {"fontSize": 10}}],
+        "legend": [
+            {"data": [c["name"] for c in categories], "top": 5, "textStyle": {"fontSize": 10}}
+        ],
         "animationDurationUpdate": 500,
         "_meta": {
             "total_original": len(layer_details),
@@ -215,6 +225,7 @@ def _build_arch_graph_data(layer_details: list[dict[str, Any]]) -> dict[str, Any
 
 # ── Per-record extractors ────────────────────────────────────────────────────
 
+
 def _extract_model_info(record: Any) -> dict[str, Any]:
     """Extract full model / LLM-profile information from a profiling record."""
     if not record.extra or "llm_profile" not in record.extra:
@@ -224,8 +235,8 @@ def _extract_model_info(record: Any) -> dict[str, Any]:
     arch = profile.get("architecture", {})
     attn = profile.get("attention_layers", {})
     summary = profile.get("summary", {})
-    mem_est = profile.get("memory_estimation", {})
-    layer_details = arch.get("layer_details", [])
+    mem_est = profile.get("memory_estimation") or {}
+    layer_details = arch.get("layer_details") or []
     return {
         "model_class": summary.get("model_class", "Unknown"),
         "device": summary.get("device", "—"),
@@ -301,36 +312,106 @@ def _extract_inference_info(record: Any) -> dict[str, Any]:
 
 
 def _extract_benchmarks_info(record: Any) -> list[dict[str, Any]]:
-    """Extract all benchmark test results from a profiling record."""
-    if not record.extra or "benchmarks" not in record.extra:
-        return []
-    results = []
-    for b in record.extra.get("benchmarks", []):
-        test_name = b.get("test_name", "unknown")
-        res = b.get("result", {})
-        entry: dict[str, Any] = {"test_name": test_name}
-        if "mean_perplexity" in res:
-            entry["mean_perplexity"] = res["mean_perplexity"]
-            entry["all_perplexities"] = res.get("all_perplexities", [])
-            entry["stats"] = res.get("stats")
-            entry["kind"] = "perplexity"
-        elif "accuracy" in b:
-            entry["accuracy"] = b["accuracy"]
-            entry["num_examples"] = b.get("num_examples", 0)
-            entry["metric_name"] = b.get("metric_name", "accuracy")
-            entry["per_example_scores"] = b.get("per_example_scores", [])
-            entry["stats"] = b.get("stats")
-            entry["details"] = b.get("details", {})
-            entry["kind"] = "accuracy"
-        else:
-            entry["kind"] = "unknown"
-        results.append(entry)
+    """
+    Extract all benchmark test results from a profiling record.
+
+    Also handles lm-eval results stored in ``record.extra['lm_eval']``
+    by converting them to the same benchmark-entry format expected by
+    ``benchmarks_detail.html.jinja2``.
+    """
+    results: list[dict[str, Any]] = []
+
+    # ── native benchmarks (existing) ────────────────────────────────────────
+    if record.extra and "benchmarks" in record.extra:
+        for b in record.extra.get("benchmarks", []):
+            test_name = b.get("test_name", "unknown")
+            res = b.get("result", {})
+            entry: dict[str, Any] = {"test_name": test_name}
+            if "mean_perplexity" in res:
+                entry["mean_perplexity"] = res["mean_perplexity"]
+                entry["all_perplexities"] = res.get("all_perplexities", [])
+                entry["stats"] = res.get("stats")
+                entry["kind"] = "perplexity"
+            elif "accuracy" in b:
+                entry["accuracy"] = b["accuracy"]
+                entry["num_examples"] = b.get("num_examples", 0)
+                entry["metric_name"] = b.get("metric_name", "accuracy")
+                entry["per_example_scores"] = b.get("per_example_scores", [])
+                entry["stats"] = b.get("stats")
+                entry["details"] = b.get("details", {})
+                entry["kind"] = "accuracy"
+            else:
+                entry["kind"] = "unknown"
+            results.append(entry)
+
+    # ── lm-eval results ────────────────────────────────────────────────────────
+    if record.extra and "lm_eval" in record.extra:
+        lm = record.extra["lm_eval"]
+        lm_results = lm.get("results", {})
+        n_shot = lm.get("n-shot", {})
+        n_samples = lm.get("n-samples", {})
+        higher_is_better = lm.get("higher_is_better", {})
+
+        for task_name, metrics in lm_results.items():
+            if not isinstance(metrics, dict):
+                continue
+
+            # Collect (metric_name, value) pairs, separating primary from stderr
+            primary: dict[str, float] = {}
+            stderr_map: dict[str, float | None] = {}
+            for k, v in metrics.items():
+                if not isinstance(v, (int, float, str)):
+                    continue
+                if isinstance(v, str):
+                    if v == "N/A":
+                        v = None
+                    else:
+                        try:
+                            v = float(v)
+                        except ValueError:
+                            continue
+                if "," in k:
+                    metric_part, _ = k.split(",", 1)
+                else:
+                    metric_part = k
+                if metric_part.endswith("_stderr"):
+                    base = metric_part[: -len("_stderr")]
+                    stderr_map[base] = float(v) if v is not None else None
+                else:
+                    primary[metric_part] = float(v) if v is not None else 0.0
+
+            for metric_name, metric_value in primary.items():
+                stderr = stderr_map.get(metric_name)
+                ns = n_shot.get(task_name, 0)
+                eff_samples = (
+                    n_samples.get(task_name, {}).get("effective")
+                    if isinstance(n_samples.get(task_name), dict)
+                    else 0
+                )
+                hib = higher_is_better.get(task_name, {}).get(metric_name, True)
+
+                entry: dict[str, Any] = {
+                    "test_name": f"{task_name}/{metric_name}",
+                    "kind": "lm_eval",
+                    "accuracy": metric_value,
+                    "stderr": stderr,
+                    "num_examples": eff_samples,
+                    "metric_name": metric_name,
+                    "num_fewshot": ns,
+                    "higher_is_better": hib,
+                    "task_name": task_name,
+                }
+                results.append(entry)
+
     return results
 
 
 # ── Template rendering ───────────────────────────────────────────────────────
 
-def _render_template(result: PipelineRunResult, dag_image_data_url: str, dag_echarts_data: dict | None) -> str:
+
+def _render_template(
+    result: PipelineRunResult, dag_image_data_url: str, dag_echarts_data: dict | None
+) -> str:
     """Render HTML using Jinja2 template."""
     stages = [r.pipeline_stage for r in result.profiling_records]
     latencies_mean = [r.latency.mean_ms for r in result.profiling_records]
@@ -341,7 +422,9 @@ def _render_template(result: PipelineRunResult, dag_image_data_url: str, dag_ech
     latencies_p95 = [r.latency.p95_ms for r in result.profiling_records]
     latencies_p99 = [r.latency.p99_ms for r in result.profiling_records]
     latencies_max = [r.latency.max_ms for r in result.profiling_records]
-    gpu_peaks = [r.memory.peak_gpu_mb if r.memory.peak_gpu_mb else 0 for r in result.profiling_records]
+    gpu_peaks = [
+        r.memory.peak_gpu_mb if r.memory.peak_gpu_mb else 0 for r in result.profiling_records
+    ]
     perplexities = [
         r.accuracy.perplexity if r.accuracy and r.accuracy.perplexity else None
         for r in result.profiling_records
@@ -350,25 +433,27 @@ def _render_template(result: PipelineRunResult, dag_image_data_url: str, dag_ech
 
     profiling_data: list[dict[str, Any]] = []
     for record in result.profiling_records:
-        profiling_data.append({
-            "stage": record.pipeline_stage,
-            "latency_mean": record.latency.mean_ms,
-            "latency_std": record.latency.std_ms,
-            "latency_min": record.latency.min_ms,
-            "latency_p5": record.latency.p5_ms,
-            "latency_p50": record.latency.p50_ms,
-            "latency_p95": record.latency.p95_ms,
-            "latency_p99": record.latency.p99_ms,
-            "latency_max": record.latency.max_ms,
-            "gpu_memory": record.memory.peak_gpu_mb,
-            "cpu_memory": record.memory.peak_cpu_mb,
-            "perplexity": record.accuracy.perplexity if record.accuracy else None,
-            "test_name": record.accuracy.task_name if record.accuracy else None,
-            "model": _extract_model_info(record),
-            "hardware": _extract_hardware_info(record),
-            "inference": _extract_inference_info(record),
-            "benchmarks": _extract_benchmarks_info(record),
-        })
+        profiling_data.append(
+            {
+                "stage": record.pipeline_stage,
+                "latency_mean": record.latency.mean_ms,
+                "latency_std": record.latency.std_ms,
+                "latency_min": record.latency.min_ms,
+                "latency_p5": record.latency.p5_ms,
+                "latency_p50": record.latency.p50_ms,
+                "latency_p95": record.latency.p95_ms,
+                "latency_p99": record.latency.p99_ms,
+                "latency_max": record.latency.max_ms,
+                "gpu_memory": record.memory.peak_gpu_mb,
+                "cpu_memory": record.memory.peak_cpu_mb,
+                "perplexity": record.accuracy.perplexity if record.accuracy else None,
+                "test_name": record.accuracy.task_name if record.accuracy else None,
+                "model": _extract_model_info(record),
+                "hardware": _extract_hardware_info(record),
+                "inference": _extract_inference_info(record),
+                "benchmarks": _extract_benchmarks_info(record),
+            }
+        )
 
     tps_values = [pd["inference"].get("tokens_per_second", 0) for pd in profiling_data]
 

@@ -72,7 +72,7 @@ def run_pipeline(
         result = executor.run()
     except Exception as e:
         logger.error(f"Pipeline execution aborted due to error: {e}")
-        return None
+        raise e
         
     print("\n" + "═" * 60)
     print("  Results")

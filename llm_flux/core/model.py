@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, model_validator
 
@@ -59,12 +60,25 @@ class ModelHandle(ABC):
         Load and return the raw model object (e.g. a ``torch.nn.Module``).
         Should move the model to the appropriate device before returning.
         """
+        raise NotImplementedError("load() must be implemented by subclasses of ModelHandle.")
 
     @abstractmethod
     def unload(self) -> None:
         """Release resources (GPU memory, file handles, etc.)."""
+        raise NotImplementedError("unload() must be implemented by subclasses of ModelHandle.")
 
     @property
     @abstractmethod
     def name(self) -> str:
         """Human-readable label used in DAG node names and logs."""
+        raise NotImplementedError("name() must be implemented by subclasses of ModelHandle.")
+
+    @abstractmethod
+    def get_tokenizer(self) -> object:
+        """Return the tokenizer associated with this model, if applicable."""
+        raise NotImplementedError("get_tokenizer() must be implemented by subclasses of ModelHandle.")
+
+    @abstractmethod
+    def get_model_instance(self) -> Any:
+        """Return the loaded model instance, if already loaded."""
+        raise NotImplementedError("get_model_instance() must be implemented by subclasses of ModelHandle.")

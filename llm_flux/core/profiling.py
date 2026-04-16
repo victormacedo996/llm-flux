@@ -4,6 +4,7 @@ core/profiling.py — Port: Profiling abstraction + structured output types.
 ProfilingResult is the single source of truth for all profiling data.
 It is serializable to JSON and can generate dissertation-ready Markdown tables.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -11,6 +12,10 @@ from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
+
+from llm_flux.core.model import ModelHandle
+
+from llm_flux.core.task_metrics import TaskMetrics
 
 
 # ── Output sub-models ─────────────────────────────────────────────────────────
@@ -40,8 +45,9 @@ class AccuracyMetrics(BaseModel):
     """Task-specific accuracy / quality measures."""
 
     perplexity: float | None = None
-    task_score: float | None = None  # e.g. accuracy, F1 — task-dependent
+    task_score: float | None = None
     task_name: str | None = None
+    task_metrics: list[TaskMetrics] = Field(default_factory=list)
 
 
 # ── Top-level result ──────────────────────────────────────────────────────────
@@ -60,7 +66,7 @@ class ProfilingResult(BaseModel):
     profiler_name: str
     model_label: str
     pipeline_stage: str  # e.g. "Baseline", "After GPTQ-4bit"
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=datetime.now)
 
     memory: MemoryMetrics = Field(default_factory=MemoryMetrics)
     latency: LatencyMetrics
@@ -76,15 +82,17 @@ class ProfilingResult(BaseModel):
             if self.accuracy and self.accuracy.perplexity is not None
             else "N/A"
         )
-        gpu = (
-            f"{self.memory.peak_gpu_mb:.0f} MB"
-            if self.memory.peak_gpu_mb is not None
-            else "N/A"
-        )
+        gpu = f"{self.memory.peak_gpu_mb:.0f} MB" if self.memory.peak_gpu_mb is not None else "N/A"
+        # Build task metrics string
+        tm_parts: list[str] = []
+        if self.accuracy and self.accuracy.task_metrics:
+            for tm in self.accuracy.task_metrics:
+                tm_parts.append(str(tm))
+        tm_str = " | ".join(tm_parts) if tm_parts else "N/A"
         return (
             f"[{self.pipeline_stage}] "
             f"Latency p95={self.latency.p95_ms:.1f} ms | "
-            f"GPU peak={gpu} | PPL={ppl}"
+            f"GPU peak={gpu} | PPL={ppl} | {tm_str}"
         )
 
 
@@ -114,7 +122,11 @@ class ProfilingPort(ABC):
     config: ProfilingConfig
 
     @abstractmethod
-    def profile(self, model: Any, stage_label: str) -> ProfilingResult:
+    def profile(
+        self,
+        stage_label: str,
+        model_handle: ModelHandle | None = None,
+    ) -> ProfilingResult:
         """
         Run profiling against ``model`` and return a fully-populated
         ``ProfilingResult``.
@@ -125,6 +137,9 @@ class ProfilingPort(ABC):
                          at which this profiling run occurs
                          (e.g. "After GPTQ-4bit").  Stored verbatim in
                          ``ProfilingResult.pipeline_stage``.
+            model_handle: Optional ``ModelHandle`` that owns the loaded model.
+                          Useful when profiling requires tokenizer or other
+                          metadata kept by the handle.
         """
 
     @property
