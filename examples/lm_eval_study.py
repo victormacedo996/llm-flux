@@ -36,7 +36,7 @@ import torch
 
 HAS_GPU = torch.cuda.is_available()
 
-CACHE_DIR = "/mnt/3c2f822b-db13-4837-ba6e-3d7b256042cc/repositorios/mestrado/ag_test/hf_cache"
+CACHE_DIR = str(Path(__file__).parent.parent / "hf_cache")
 os.environ["HF_HOME"] = CACHE_DIR
 os.environ["HF_DATASETS_CACHE"] = CACHE_DIR
 
@@ -173,11 +173,12 @@ def run_experiment_for_ratio(ratio: float):
     # Baseline profiling
     profiler = LmEvalAdapter(
         config=LmEvalConfig(
-            name=f"lambada profiler",
+            name=f"arithmetic_1dc profiler",
             description=f"lm-evaluation-harness profiling",
-            tasks='lambada',
-            limit=3,
+            tasks='gsm8k',
+            limit=10,
             no_cache=True,
+            num_fewshot=5
         ),
     )
 
@@ -219,6 +220,7 @@ def run_experiment_for_ratio(ratio: float):
         dag_output=str(result_dir / "dag_graph.png"),
         result_output=str(result_dir / "results.json"),
         html_report_output=str(result_dir / "report.html"),
+        csv_output=str(result_dir / "results.csv"),
         skip_confirmation=True,
         show_dag=False,
     )

@@ -4,6 +4,7 @@ modelforge/runner.py — High-level pipeline entry point.
 Combines build_dag + render_dag + confirmation prompt + PipelineExecutor
 into a single `run_pipeline()` function.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -22,6 +23,8 @@ def run_pipeline(
     dag_output: Path | str = "pipeline_dag.png",
     result_output: Path | str | None = None,
     html_report_output: Path | str | None = None,
+    csv_output: Path | str | None = None,
+    comparison_csv_output: Path | str | None = None,
     skip_confirmation: bool = False,
     show_dag: bool = True,
 ) -> PipelineRunResult:
@@ -35,6 +38,10 @@ def run_pipeline(
                                 ``"{pipeline.name}_result.json"``.
         html_report_output:     Path for the interactive HTML report. If provided,
                                 an HTML report will be generated after execution.
+        csv_output:             Path for the CSV results file. If provided, a CSV
+                                with one row per profiling checkpoint will be saved.
+        comparison_csv_output:  Path for the Metric/Model comparison CSV. Compares
+                                the first and last profiling checkpoints.
         skip_confirmation:      If True, skip the [y/N] prompt (useful for scripts/CI).
         show_dag:               If True, attempt to display the DAG interactively.
 
@@ -73,7 +80,7 @@ def run_pipeline(
     except Exception as e:
         logger.error(f"Pipeline execution aborted due to error: {e}")
         raise e
-        
+
     print("\n" + "═" * 60)
     print("  Results")
     print("═" * 60)
@@ -93,5 +100,15 @@ def run_pipeline(
             dag_echarts_data=dag_echarts_data,
         )
         logger.info(f"  HTML report saved → {html_path.resolve()}")
+
+    # ── 7. Generate CSV (optional) ───────────────────────────────────────────
+    if csv_output:
+        csv_path = result.save_csv(csv_output)
+        logger.info(f"  CSV results saved → {csv_path.resolve()}")
+
+    # ── 8. Generate comparison CSV (optional) ─────────────────────────────────
+    if comparison_csv_output:
+        comp_path = result.to_comparison_csv(comparison_csv_output)
+        logger.info(f"  Comparison CSV saved → {comp_path.resolve()}")
 
     return result

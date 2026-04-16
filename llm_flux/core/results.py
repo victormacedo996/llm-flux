@@ -7,16 +7,18 @@ It carries all ProfilingResults and can generate dissertation-ready output.
 
 from __future__ import annotations
 
+import csv
+from collections.abc import Generator
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
 from llm_flux.core.profiling import ProfilingResult
 
 if TYPE_CHECKING:
-    from llm_flux.core.html_reporter import generate_html_report
+    pass
 
 
 class PipelineRunResult(BaseModel):
@@ -55,7 +57,7 @@ class PipelineRunResult(BaseModel):
 
     def _record_rows(
         self,
-    ) -> list[tuple[ProfilingResult, str]]:
+    ) -> Generator[tuple[ProfilingResult, str], None, None]:
         """Yield (record, metrics_summary) pairs for table/log rendering."""
         for r in self._flatten_records(self.profiling_records):
             if r.accuracy and r.accuracy.task_metrics:
@@ -71,14 +73,6 @@ class PipelineRunResult(BaseModel):
     def to_markdown_table(self) -> str:
         """
         Generate a Markdown table ready to paste into a dissertation.
-
-        Example output::
-
-            | Stage                  | Latency p95 (ms) | GPU Peak (MB) | Metrics                     |
-            | ---------------------- | ---------------- | ------------- | ---------------------------- |
-            | Baseline Profiling     | 42.3             | 14,500        | hellaswag/acc=0.6432 ±0.009  |
-            | Post-GPTQ Profiling    | 18.7             | 5,200         | hellaswag/acc=0.5891          |
-            | Post-Healing Profiling | 19.1             | 5,300         | hellaswag/acc=0.6312 ±0.008  |
         """
         header = (
             "| Stage | Latency p95 (ms) | GPU Peak (MB) | Metrics |\n"
@@ -118,11 +112,201 @@ class PipelineRunResult(BaseModel):
         out.write_text(self.model_dump_json(indent=2))
         return out
 
+    # ── CSV output ─────────────────────────────────────────────────────────────
+
+    def _extract_benchmark_metrics(self, record: ProfilingResult) -> dict[str, float | str | None]:
+        """Extract benchmark metrics from a ProfilingResult for CSV output."""
+        metrics: dict[str, float | str | None] = {}
+
+        # ── native benchmarks ──────────────────────────────────────────────────
+        if record.extra and "benchmarks" in record.extra:
+            for b in record.extra.get("benchmarks", []):
+                test_name = b.get("test_name", "unknown")
+                res = b.get("result", {})
+                if "mean_perplexity" in res:
+                    metrics[f"{test_name}_perplexity"] = res["mean_perplexity"]
+                elif "accuracy" in b:
+                    metric_name = b.get("metric_name", "acc")
+                    metrics[f"{test_name}_{metric_name}"] = b["accuracy"]
+
+        # ── lm-eval results ────────────────────────────────────────────────────
+        if record.extra and "lm_eval" in record.extra:
+            lm = record.extra["lm_eval"]
+            lm_results = lm.get("results", {})
+            for task_name, metrics_dict in lm_results.items():
+                if not isinstance(metrics_dict, dict):
+                    continue
+                for k, v in metrics_dict.items():
+                    if isinstance(v, str):
+                        if v == "N/A":
+                            v_val: float | None = None
+                        else:
+                            try:
+                                v_val = float(v)
+                            except ValueError:
+                                continue
+                    elif isinstance(v, (int, float)):
+                        v_val = float(v)
+                    else:
+                        continue
+                    if k.endswith("_stderr"):
+                        continue
+                    metrics[f"{task_name}_{k}"] = v_val
+
+        return metrics
+
+    def _get_comparison_metrics(
+        self, record: ProfilingResult
+    ) -> dict[str, float | int | str | None]:
+        """Extract and format metrics for a single profiling record for comparison CSV."""
+        metrics_data: dict[str, float | int | str | None] = {}
+
+        if record.extra and "llm_profile" in record.extra:
+            params_info = record.extra["llm_profile"].get("parameters", {})
+            metrics_data["Parameters"] = params_info.get("total_parameters")
+
+        if record.latency and record.latency.p95_ms is not None:
+            metrics_data["Inference Time"] = round(record.latency.p95_ms / 1000.0, 3)
+
+        benchmark_metrics = self._extract_benchmark_metrics(record)
+        for key, value in benchmark_metrics.items():
+            display_key = key.replace("_perplexity", "").replace("_acc", "")
+            metrics_data[display_key] = value
+
+        return metrics_data
+
+    def to_comparison_csv(self, path: str | Path = "pipeline_comparison.csv") -> Path:
+        """
+        Generate a Metric / Model comparison CSV.
+
+        Compares the first and last profiling checkpoints. Format::
+
+            Metric,Model1,Model2,Change
+            Parameters,268098176,256950912,-4.16%
+            Inference Time,4.651s,4.181s,+10.1% faster
+            arc_easy,0.55,0.46,-16.36%
+            ...
+
+        Change is expressed as a signed percentage. For Inference Time,
+        positive means faster (lower latency is better).
+        """
+        all_records = self._flatten_records(self.profiling_records)
+        if len(all_records) < 2:
+            raise ValueError(
+                "to_comparison_csv requires at least two profiling records "
+                "(first and last) to compare."
+            )
+
+        record_a = all_records[0]
+        record_b = all_records[-1]
+        model_a = record_a.model_label
+        model_b = record_b.model_label
+
+        metrics_a = self._get_comparison_metrics(record_a)
+        metrics_b = self._get_comparison_metrics(record_b)
+
+        all_metric_keys: set[str] = set(metrics_a.keys()) | set(metrics_b.keys())
+        metric_order = ["Parameters", "Inference Time"]
+        sorted_keys = metric_order + sorted(k for k in all_metric_keys if k not in metric_order)
+
+        out = Path(path)
+        with open(out, "w", newline="") as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(["Metric", model_a, model_b, "Change"])
+
+            for key in sorted_keys:
+                val_a = metrics_a.get(key)
+                val_b = metrics_b.get(key)
+
+                if val_a is None or val_b is None:
+                    change_str = "N/A"
+                elif key == "Inference Time":
+                    if (
+                        isinstance(val_a, (int, float))
+                        and isinstance(val_b, (int, float))
+                        and val_a != 0
+                    ):
+                        pct = ((val_a - val_b) / val_a) * 100
+                        sign = "+" if pct > 0 else ""
+                        change_str = f"{sign}{pct:.1f}% faster"
+                    else:
+                        change_str = "N/A"
+                elif (
+                    isinstance(val_a, (int, float))
+                    and isinstance(val_b, (int, float))
+                    and val_a != 0
+                ):
+                    pct = ((val_b - val_a) / val_a) * 100
+                    sign = "+" if pct > 0 else ""
+                    change_str = f"{sign}{pct:.2f}%"
+                else:
+                    change_str = "N/A"
+
+                writer.writerow(
+                    [
+                        key,
+                        val_a if val_a is not None else "",
+                        val_b if val_b is not None else "",
+                        change_str,
+                    ]
+                )
+
+        return out.absolute()
+
+    def save_csv(self, path: str | Path = "pipeline_results.csv") -> Path:
+        """
+        Persist profiling results as a CSV with one row per profiling checkpoint.
+
+        Columns are dynamic: benchmark test names become columns
+        (e.g. lambada_perplexity, hellaswag_acc). Static columns are:
+        model, stage, tokens_per_second, latency_p95_ms, memory_peak_mb.
+        """
+        out = Path(path)
+        all_records = self._flatten_records(self.profiling_records)
+
+        benchmark_headers: set[str] = set()
+        for record in all_records:
+            benchmark_headers.update(self._extract_benchmark_metrics(record).keys())
+
+        static_headers = [
+            "model",
+            "stage",
+            "tokens_per_second",
+            "latency_p95_ms",
+            "memory_peak_mb",
+        ]
+        fieldnames = static_headers + sorted(benchmark_headers)
+
+        with open(out, "w", newline="") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+
+            for record in all_records:
+                row: dict[str, Any] = {
+                    "model": record.model_label,
+                    "stage": record.pipeline_stage,
+                    "tokens_per_second": (
+                        record.extra["inference"]["tokens_per_second"]
+                        if record.extra and "inference" in record.extra
+                        else ""
+                    ),
+                    "latency_p95_ms": record.latency.p95_ms,
+                    "memory_peak_mb": (
+                        int(record.memory.peak_gpu_mb)
+                        if record.memory.peak_gpu_mb is not None
+                        else ""
+                    ),
+                }
+                row.update(self._extract_benchmark_metrics(record))
+                writer.writerow(row)
+
+        return out.absolute()
+
     def save_html_report(
         self,
         path: str | Path = "pipeline_report.html",
         dag_image_path: str | Path | None = None,
-        dag_echarts_data: dict | None = None,
+        dag_echarts_data: dict[str, Any] | None = None,
     ) -> Path:
         """
         Generate an interactive HTML report from the pipeline results.
@@ -137,7 +321,8 @@ class PipelineRunResult(BaseModel):
         Args:
             path: Output path for the HTML file (default: pipeline_report.html)
             dag_image_path: Optional path to DAG PNG image to embed in report
-            dag_echarts_data: Optional ECharts data dict for interactive DAG visualization
+            dag_echarts_data: Optional ECharts data dict for interactive DAG
+                              visualization
 
         Returns:
             Path: The absolute path to the generated HTML file

@@ -81,17 +81,7 @@ class LmEvalAdapter(ProfilingPort):
             llm_info = llm_p.profile_complete(estimate_memory=estimate_mem)
             extra["llm_profile"] = llm_info.model_dump()
 
-        # ── Inference benchmark ────────────────────────────────────────────────
-        latency = LatencyMetrics(
-            mean_ms=0.0,
-            std_ms=0.0,
-            min_ms=0.0,
-            p5_ms=0.0,
-            p50_ms=0.0,
-            p95_ms=0.0,
-            p99_ms=0.0,
-            max_ms=0.0,
-        )
+        
         memory = MemoryMetrics()
 
         if self.config.run_inference_benchmark:
