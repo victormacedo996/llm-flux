@@ -7,7 +7,8 @@ across a calibration dataset. Supports aligning vocabulary sizes for Tensor Core
 from __future__ import annotations
 
 import math
-from typing import Any, Callable, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -19,9 +20,8 @@ from llm_flux.core.compression import (
     CompressionNotSupportedError,
     CompressionPort,
 )
-
-
 from llm_flux.datasets.port import DatasetConfig
+
 
 class DepthPruningConfig(CompressionConfig):
     name: str = "depth-pruning"
@@ -44,7 +44,7 @@ def get_transformer_layers(model: Any) -> nn.ModuleList:
     
     raise CompressionNotSupportedError("Could not locate the nn.ModuleList containing transformer layers.")
 
-def angular_distance_importance(model: Any, input_ids: torch.Tensor) -> List[float]:
+def angular_distance_importance(model: Any, input_ids: torch.Tensor) -> list[float]:
     """
     Calculates the angular distance between the input and output of each layer.
     Angular Distance = (1/pi) * arccos(cosine_similarity)
@@ -84,7 +84,7 @@ def angular_distance_importance(model: Any, input_ids: torch.Tensor) -> List[flo
     for h in hooks:
         h.remove()
 
-    distances: List[float] = []
+    distances: list[float] = []
     for i in range(num_layers):
         if not layer_inputs[i]:
             distances.append(float("inf"))
@@ -104,7 +104,7 @@ def angular_distance_importance(model: Any, input_ids: torch.Tensor) -> List[flo
 
     return distances
 
-LayerImportanceFn = Callable[[Any, torch.Tensor], List[float]]
+LayerImportanceFn = Callable[[Any, torch.Tensor], list[float]]
 
 
 class DepthPruningAdapter(CompressionPort):
@@ -117,7 +117,7 @@ class DepthPruningAdapter(CompressionPort):
         self, 
         config: DepthPruningConfig, 
         tokenizer: Any,
-        importance_fn: Optional[LayerImportanceFn] = None
+        importance_fn: LayerImportanceFn | None = None
     ) -> None:
         self.config = config
         self.tokenizer = tokenizer
@@ -197,7 +197,7 @@ class DepthPruningAdapter(CompressionPort):
         ).to(device)
         return inputs["input_ids"]
 
-    def _prune_layers(self, model: Any, layers_to_drop: List[int]) -> Any:
+    def _prune_layers(self, model: Any, layers_to_drop: list[int]) -> Any:
         layers = get_transformer_layers(model)
         keep_indices = [i for i in range(len(layers)) if i not in layers_to_drop]
         

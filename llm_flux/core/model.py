@@ -28,7 +28,7 @@ class ModelSource(BaseModel):
     cache_dir: str | None = None
 
     @model_validator(mode="after")
-    def _validate_identifier(self) -> "ModelSource":
+    def _validate_identifier(self) -> ModelSource:
         path = Path(self.identifier)
         if not path.exists():
             # Basic sanity-check for a Hub id: must contain "/" or be a valid identifier

@@ -27,7 +27,7 @@ class DatasetConfig(BaseModel):
     seed: int = 42  # kept for backward compatibility (not used by first-N mode)
 
     @model_validator(mode="after")
-    def _max_samples_positive(self) -> "DatasetConfig":
+    def _max_samples_positive(self) -> DatasetConfig:
         if self.max_samples is not None and self.max_samples <= 0:
             raise ValueError(f"max_samples must be a positive integer, got {self.max_samples}")
         return self

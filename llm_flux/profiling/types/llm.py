@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -21,8 +21,8 @@ class ParameterInfo(BaseModel):
     non_trainable: int
     total_millions: float
     total_billions: float
-    by_dtype_counts: Dict[str, int] = Field(default_factory=dict)
-    by_dtype_bytes: Dict[str, int] = Field(default_factory=dict)
+    by_dtype_counts: dict[str, int] = Field(default_factory=dict)
+    by_dtype_bytes: dict[str, int] = Field(default_factory=dict)
 
 
 class LayerConnectionInfo(BaseModel):
@@ -30,10 +30,10 @@ class LayerConnectionInfo(BaseModel):
     type: str
     parameters: int
     depth: int
-    input_layers: List[str] = Field(default_factory=list)
-    output_layers: List[str] = Field(default_factory=list)
-    input_shape: Optional[List[int]] = None
-    output_shape: Optional[List[int]] = None
+    input_layers: list[str] = Field(default_factory=list)
+    output_layers: list[str] = Field(default_factory=list)
+    input_shape: list[int] | None = None
+    output_shape: list[int] | None = None
 
 
 class ConnectionAnalysisInfo(BaseModel):
@@ -42,28 +42,28 @@ class ConnectionAnalysisInfo(BaseModel):
     has_skip_connections: bool
     max_fan_in: int
     max_fan_out: int
-    connection_graph: Dict[str, LayerConnectionInfo] = Field(default_factory=dict)
+    connection_graph: dict[str, LayerConnectionInfo] = Field(default_factory=dict)
 
 
 class ArchitectureInfo(BaseModel):
     total_layers: int
     max_depth: int
-    layer_types_count: Dict[str, int] = Field(default_factory=dict)
-    layer_details: List[Dict[str, Any]] = Field(default_factory=list)
-    connections: Optional[ConnectionAnalysisInfo] = None
+    layer_types_count: dict[str, int] = Field(default_factory=dict)
+    layer_details: list[dict[str, Any]] = Field(default_factory=list)
+    connections: ConnectionAnalysisInfo | None = None
 
 
 class AttentionLayerAnalysisInfo(BaseModel):
     num_attention_layers: int
-    attention_layers: List[Dict[str, Any]] = Field(default_factory=list)
+    attention_layers: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class MemoryEstimate(BaseModel):
     precision: str
     bytes_per_parameter: float
     model_weights_mb: float
-    kv_cache_mb: Optional[float] = None
-    activation_memory_mb: Optional[float] = None
+    kv_cache_mb: float | None = None
+    activation_memory_mb: float | None = None
     gradient_memory_mb: float
     optimizer_memory_mb: float
     # training_memory_mb = gradient + optimizer overhead
@@ -75,7 +75,7 @@ class MemoryEstimate(BaseModel):
 
 class MemoryEstimationInfo(BaseModel):
     base_parameters: int
-    estimates: Dict[str, MemoryEstimate] = Field(default_factory=dict)
+    estimates: dict[str, MemoryEstimate] = Field(default_factory=dict)
 
 
 class ModelSummary(BaseModel):
@@ -89,7 +89,7 @@ class LLMInfo(BaseModel):
     parameters: ParameterInfo
     architecture: ArchitectureInfo
     attention_layers: AttentionLayerAnalysisInfo
-    memory_estimation: Optional[MemoryEstimationInfo] = None
+    memory_estimation: MemoryEstimationInfo | None = None
 
 
 # ── Optional profiling trigger configs ───────────────────────────────────────
@@ -98,8 +98,8 @@ class LLMInfo(BaseModel):
 class AnalyzeConnections(BaseModel):
     """Pass to LLMProfiler.profile_complete() to enable connection analysis."""
 
-    input_shape: Optional[tuple] = None  # type: ignore[type-arg]
-    sample_input: Optional[Any] = None   # callable or tensor
+    input_shape: tuple | None = None  # type: ignore[type-arg]
+    sample_input: Any | None = None   # callable or tensor
 
     model_config = {"arbitrary_types_allowed": True}
 

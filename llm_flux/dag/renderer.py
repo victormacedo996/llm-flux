@@ -3,12 +3,12 @@ dag/renderer.py — Renders a pipeline DAG to a PNG file using matplotlib or ECh
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import networkx as nx
-import os
 
 KIND_COLORS: dict[str, str] = {
     "load":     "#4A90D9",  # blue
@@ -42,7 +42,6 @@ def render_dag(
     import matplotlib
     if not show:
         matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
     output_path = Path(output_path)
     nodes = list(dag.nodes)
 

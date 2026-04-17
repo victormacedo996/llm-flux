@@ -1,5 +1,11 @@
 """Profiling types — hardware, LLM, inference, benchmarks."""
 
+from llm_flux.profiling.types.benchmark import (
+    AccuracyTestResult,
+    ComputePerplexityForBatchReturn,
+    ComputePerplexityForDatasetReturn,
+    PerplexityTestResult,
+)
 from llm_flux.profiling.types.hardware import (
     CPUInfo,
     GPUInfo,
@@ -9,6 +15,7 @@ from llm_flux.profiling.types.hardware import (
     RAMInfo,
     SystemGPUInfo,
 )
+from llm_flux.profiling.types.inference import CompareBenchmark, InferencePerformanceInfo
 from llm_flux.profiling.types.llm import (
     AnalyzeConnections,
     ArchitectureInfo,
@@ -22,13 +29,6 @@ from llm_flux.profiling.types.llm import (
     ModelSummary,
     ParameterInfo,
     PrecisionType,
-)
-from llm_flux.profiling.types.inference import CompareBenchmark, InferencePerformanceInfo
-from llm_flux.profiling.types.benchmark import (
-    AccuracyTestResult,
-    ComputePerplexityForBatchReturn,
-    ComputePerplexityForDatasetReturn,
-    PerplexityTestResult,
 )
 from llm_flux.profiling.types.stats import DescriptiveStats
 

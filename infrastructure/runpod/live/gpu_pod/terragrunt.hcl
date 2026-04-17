@@ -7,12 +7,12 @@ terraform {
   source = "../../modules/runpod_pod"
 }
 
-# dependency "network_volume" {
-#   config_path = "../network_volume"
-#   mock_outputs = {
-#     network_volume_id = "mock-network-volume-id"
-#   }
-# }
+dependency "network_volume" {
+  config_path = "../network_volume"
+  mock_outputs = {
+    network_volume_id = "mock-network-volume-id"
+  }
+}
 
 inputs = {
   name  = "ag-test-gpu-pod"
@@ -48,12 +48,12 @@ inputs = {
 
 
   # ── Storage ───────────────────────────────────────────────────────────────────
-  volume_in_gb         = 20
-  # volume_mount_path    = "/workspace"
+  # volume_in_gb         = 20
+  volume_mount_path    = "/workspace"
   # container_disk_in_gb = 10
 
   # Attach an existing network volume (leave empty to skip).
-  # network_volume_id = dependency.network_volume.outputs.network_volume_id
+  network_volume_id = dependency.network_volume.outputs.network_volume_id
 
   # ── Networking ────────────────────────────────────────────────────────────────
   support_public_ip = true

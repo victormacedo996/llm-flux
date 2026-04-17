@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import time
 import warnings
 from datetime import datetime
 from typing import Any
 
 from loguru import logger
-from pydantic import Field
 
 from llm_flux.core.model import ModelHandle
 from llm_flux.core.profiling import (
@@ -38,6 +36,8 @@ class LmEvalConfig(ProfilingConfig):
     prompt: str = "The quick brown fox jumps over the lazy dog."
     max_new_tokens: int = 100
 
+    gen_kwargs: dict[str, Any] | None = None
+
 
 class LmEvalAdapter(ProfilingPort):
     def __init__(
@@ -51,14 +51,21 @@ class LmEvalAdapter(ProfilingPort):
         stage_label: str,
         model_handle: ModelHandle | None = None,
     ) -> list[ProfilingResult]:
-        from lm_eval.models.huggingface import HFLM
-        import lm_eval
+        try:
+            import lm_eval
+            from lm_eval.models.huggingface import HFLM
+        except ImportError as e:
+            raise ImportError(
+                "lm-eval is not installed. Install with: pip install 'lm_eval[hf]'"
+            ) from e
 
         if model_handle is None:
             raise ValueError("LmEvalAdapter requires a model_handle.")
 
         model = model_handle.get_model_instance()
         tokenizer = model_handle.get_tokenizer()
+
+        gen_kwargs = self._resolve_gen_kwargs(model)
 
         extra: dict[str, Any] = {}
 
@@ -81,14 +88,24 @@ class LmEvalAdapter(ProfilingPort):
             llm_info = llm_p.profile_complete(estimate_memory=estimate_mem)
             extra["llm_profile"] = llm_info.model_dump()
 
-        
         memory = MemoryMetrics()
+        latency = LatencyMetrics(
+            mean_ms=0.0,
+            std_ms=0.0,
+            min_ms=0.0,
+            p5_ms=0.0,
+            p50_ms=0.0,
+            p95_ms=0.0,
+            p99_ms=0.0,
+            max_ms=0.0,
+        )
 
         if self.config.run_inference_benchmark:
+            import torch
+
             from llm_flux.profiling.inference_benchmarker import (
                 InferencePerformanceBenchmarker,
             )
-            import torch
 
             logger.info("  ⏱️  Inference benchmarking...")
             bench = InferencePerformanceBenchmarker()
@@ -127,7 +144,6 @@ class LmEvalAdapter(ProfilingPort):
             f"| num_fewshot={self.config.num_fewshot} | limit={self.config.limit}"
         )
 
-        t0 = time.perf_counter()
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", message="Failed to get model SHA")
             raw = lm_eval.simple_evaluate(
@@ -139,24 +155,71 @@ class LmEvalAdapter(ProfilingPort):
                 limit=self.config.limit,
                 bootstrap_iters=self.config.bootstrap_iters,
                 verbosity=self.config.verbosity,
+                gen_kwargs=gen_kwargs,
             )
-        lm_eval_duration_s = time.perf_counter() - t0
-        extra["lm_eval_duration_seconds"] = lm_eval_duration_s
-
-        latency = LatencyMetrics(
-            mean_ms=lm_eval_duration_s * 1000,
-            std_ms=0.0,
-            min_ms=lm_eval_duration_s * 1000,
-            p5_ms=lm_eval_duration_s * 1000,
-            p50_ms=lm_eval_duration_s * 1000,
-            p95_ms=lm_eval_duration_s * 1000,
-            p99_ms=lm_eval_duration_s * 1000,
-            max_ms=lm_eval_duration_s * 1000,
-        )
 
         return self._normalize_results(raw, stage_label, model_handle, extra, latency, memory)
 
     # ── private helpers ────────────────────────────────────────────────────────
+
+    def _resolve_gen_kwargs(self, model: Any) -> dict[str, Any]:
+        """
+        Resolve generation kwargs for lm-eval, automatically adapting the max
+        tokens to generate to the model's context window size.
+
+        lm-eval task YAMLs (e.g. ``mmlu_pro``) often set ``max_gen_toks: 2048``
+        which — on models with ``max_position_embeddings == 2048`` — leaves no
+        room for the prompt and triggers:
+
+            AssertionError: Invalid configuration: requested max tokens to
+            generate (2048) must be less than model's maximum sequence
+            length (2048).
+
+        We override with a safe value based on the model's actual context
+        size minus a reserved prompt window.
+
+        IMPORTANT: lm-eval's ``normalize_gen_kwargs`` prioritises
+        ``max_gen_toks`` over ``max_new_tokens``. Since task YAMLs use
+        ``max_gen_toks``, we must set the same key to guarantee the override.
+        """
+        PROMPT_RESERVED_SPACE = 512
+
+        max_seq_len = (
+            getattr(model.config, "max_position_embeddings", None)
+            or getattr(model.config, "n_positions", None)
+            or getattr(model.config, "n_ctx", None)
+            or 2048
+        )
+
+        safe_max_gen_toks = max(1, max_seq_len - PROMPT_RESERVED_SPACE)
+
+        gen_kwargs: dict[str, Any] = dict(self.config.gen_kwargs) if self.config.gen_kwargs else {}
+
+        # Normalise any user-provided token-limit alias to max_gen_toks so it
+        # wins against the task YAML's max_gen_toks default.
+        user_limit = (
+            gen_kwargs.pop("max_gen_toks", None)
+            or gen_kwargs.pop("max_new_tokens", None)
+            or gen_kwargs.pop("max_tokens", None)
+            or gen_kwargs.pop("max_completion_tokens", None)
+        )
+
+        chosen = int(user_limit) if user_limit is not None else safe_max_gen_toks
+        # Clamp to safe bound to avoid the max_ctx_len <= 0 assertion in lm-eval.
+        if chosen >= max_seq_len:
+            logger.warning(
+                f"  Requested max_gen_toks={chosen} >= model max_context={max_seq_len}; "
+                f"clamping to {safe_max_gen_toks}."
+            )
+            chosen = safe_max_gen_toks
+
+        gen_kwargs["max_gen_toks"] = chosen
+        logger.info(
+            f"  Using max_gen_toks={chosen} "
+            f"(model max_context={max_seq_len}, reserved={PROMPT_RESERVED_SPACE})"
+        )
+
+        return gen_kwargs
 
     def _normalize_results(
         self,
@@ -250,8 +313,13 @@ class LmEvalAdapter(ProfilingPort):
                         latency=latency
                         or LatencyMetrics(
                             mean_ms=0.0,
+                            std_ms=0.0,
+                            min_ms=0.0,
+                            p5_ms=0.0,
                             p50_ms=0.0,
                             p95_ms=0.0,
+                            p99_ms=0.0,
+                            max_ms=0.0,
                         ),
                         accuracy=accuracy,
                         extra=record_extra,

@@ -7,8 +7,6 @@ All benchmark result types embed this model rather than duplicating fields.
 """
 from __future__ import annotations
 
-from typing import List
-
 import numpy as np
 from pydantic import BaseModel
 
@@ -48,7 +46,7 @@ class DescriptiveStats(BaseModel):
     max: float
 
     @classmethod
-    def from_values(cls, values: List[float]) -> "DescriptiveStats":
+    def from_values(cls, values: list[float]) -> DescriptiveStats:
         """
         Compute descriptive statistics from a list of floats.
 

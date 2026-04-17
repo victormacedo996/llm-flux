@@ -22,7 +22,6 @@ from jinja2 import Environment, FileSystemLoader
 if TYPE_CHECKING:
     from llm_flux.core.results import PipelineRunResult
 
-from loguru import logger
 
 # ── Layer-type colour palette (ECharts) ─────────────────────────────────────
 _LAYER_COLORS: dict[str, str] = {

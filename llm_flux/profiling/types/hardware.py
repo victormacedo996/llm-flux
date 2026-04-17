@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -37,8 +36,8 @@ class GPUProperties(BaseModel):
     multi_processor_count: int
     max_threads_per_multi_processor: int
     max_threads_per_block: int
-    max_block_dim: List[int]
-    max_grid_dim: List[int]
+    max_block_dim: list[int]
+    max_grid_dim: list[int]
     warp_size: int
 
 
@@ -52,11 +51,11 @@ class GPUInfo(BaseModel):
 
 class SystemGPUInfo(BaseModel):
     cuda_available: bool
-    cuda_version: Optional[str] = None
-    cudnn_version: Optional[str] = None
+    cuda_version: str | None = None
+    cudnn_version: str | None = None
     device_count: int = 0
-    current_device: Optional[int] = None
-    gpus: List[GPUInfo] = Field(default_factory=list)
+    current_device: int | None = None
+    gpus: list[GPUInfo] = Field(default_factory=list)
     timestamp: datetime = Field(default_factory=datetime.now)
 
 

@@ -45,7 +45,7 @@ class HFTrainerAdapter(HealingPort):
         self.tokenizer = tokenizer
 
     def heal(self, model: Any) -> Any:
-        from transformers import TrainingArguments, DataCollatorForLanguageModeling
+        from transformers import DataCollatorForLanguageModeling, TrainingArguments
 
         cfg = self.config
 
@@ -91,7 +91,8 @@ class HFTrainerAdapter(HealingPort):
         # during training, causing apparent hangs and repeated downloads.
         # Converting to a regular in-memory Dataset avoids all of that.
         try:
-            from datasets import IterableDataset as _IterableDataset, Dataset as _Dataset
+            from datasets import Dataset as _Dataset
+            from datasets import IterableDataset as _IterableDataset
             if isinstance(tokenized_dataset, _IterableDataset):
                 logger.info("  🔄 Materialising streaming dataset into memory (avoids lazy I/O during training)...")
                 tokenized_dataset = _Dataset.from_list(list(tokenized_dataset))
@@ -114,7 +115,8 @@ class HFTrainerAdapter(HealingPort):
         if cfg.lora:
             logger.info("  🔧 Applying LoRA (PEFT)...")
             try:
-                from peft import get_peft_model, LoraConfig as PeftLoraConfig, TaskType
+                from peft import LoraConfig as PeftLoraConfig
+                from peft import TaskType, get_peft_model
 
                 lc = cfg.lora
                 peft_cfg = PeftLoraConfig(

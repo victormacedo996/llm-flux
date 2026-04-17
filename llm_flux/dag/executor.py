@@ -5,15 +5,15 @@ dag/executor.py — Walks the DAG and runs each step via its registered Port.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 import networkx as nx
 from loguru import logger
 
 from llm_flux.core.compression import CompressionNotSupportedError
 from llm_flux.core.model import ModelHandle
-from llm_flux.core.results import PipelineRunResult
 from llm_flux.core.profiling import ProfilingResult
+from llm_flux.core.results import PipelineRunResult
 
 
 class PipelineExecutor:
@@ -31,8 +31,8 @@ class PipelineExecutor:
         self.dag = dag
 
     def run(self) -> PipelineRunResult:
-        model: Optional[Any] = None
-        model_handle: Optional[ModelHandle] = None
+        model: Any | None = None
+        model_handle: ModelHandle | None = None
         profiling_records: list[ProfilingResult] = []
         started_at = datetime.now()
         step_count = len(self.dag.nodes)
@@ -59,20 +59,18 @@ class PipelineExecutor:
                         logger.info(f"  ✅ Compression applied: {port.label}")
 
                     case "profile":
-                        result_or_list = port.profile(
+                        results = port.profile(
                             stage_label=step.label,
                             model_handle=model_handle,
                         )
-                        if isinstance(result_or_list, list):
-                            profiling_records.extend(result_or_list)
-                            logger.info(
-                                f"  ✅ {len(result_or_list)} profiling result(s) — {step.label}"
-                            )
-                            for r in result_or_list:
-                                logger.info(f"  ✅ {r.summary()}")
-                        else:
-                            profiling_records.append(result_or_list)
-                            logger.info(f"  ✅ {result_or_list.summary()}")
+                        # ProfilingPort.profile contract: returns list[ProfilingResult].
+                        # Accept a single ProfilingResult for backward compatibility.
+                        if not isinstance(results, list):
+                            results = [results]
+                        profiling_records.extend(results)
+                        logger.info(f"  ✅ {len(results)} profiling result(s) — {step.label}")
+                        for r in results:
+                            logger.info(f"  ✅ {r.summary()}")
 
                     case "heal":
                         model = port.heal(model)

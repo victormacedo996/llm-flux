@@ -5,11 +5,12 @@ Detects local vs Hub automatically based on ModelSource.is_local.
 """
 from __future__ import annotations
 
+from typing import Any
+
 from loguru import logger
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from llm_flux.core.model import ModelHandle, ModelSource
-from typing import Any
-from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
 class HFModelHandle(ModelHandle):

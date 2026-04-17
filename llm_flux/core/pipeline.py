@@ -6,12 +6,9 @@ No callables here — the registry wires the config_ref strings to Port instance
 """
 from __future__ import annotations
 
-from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, field_validator, model_validator
-
-
+from pydantic import BaseModel, field_validator
 
 
 class PipelineStep(BaseModel):

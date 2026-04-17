@@ -1,8 +1,6 @@
 """Pydantic types for inference performance benchmarking."""
 from __future__ import annotations
 
-from typing import List
-
 from pydantic import BaseModel, Field
 
 
@@ -22,7 +20,7 @@ class InferencePerformanceInfo(BaseModel):
     num_runs: int
     generated_tokens: int
     #: Raw per-run wall-clock times (seconds) for offline analysis.
-    raw_times: List[float] = Field(default_factory=list)
+    raw_times: list[float] = Field(default_factory=list)
 
 
 class CompareBenchmark(BaseModel):

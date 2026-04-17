@@ -5,7 +5,8 @@ import inspect
 import math
 import re
 import string
-from typing import Any, Callable, Dict, List, Literal, Set, Sequence, get_args
+from collections.abc import Callable, Sequence
+from typing import Any, Literal, get_args
 
 import torch
 from datasets import Dataset
@@ -19,7 +20,6 @@ from llm_flux.profiling.types.benchmark import (
     PerplexityTestResult,
 )
 from llm_flux.profiling.types.stats import DescriptiveStats
-
 
 PERPLEXITY_TESTS = Literal["lambada", "wikitext_103_v1", "c4"]
 ACCURACY_TESTS = Literal[
@@ -42,7 +42,7 @@ ACCURACY_TESTS = Literal[
 _DEFAULT_MAX_NEW_TOKENS = 64
 _PUNCT_TRANSLATION = str.maketrans("", "", string.punctuation)
 
-AVAILABLE_TESTS: List[str] = list(get_args(PERPLEXITY_TESTS) + get_args(ACCURACY_TESTS))
+AVAILABLE_TESTS: list[str] = list(get_args(PERPLEXITY_TESTS) + get_args(ACCURACY_TESTS))
 
 TestResult = PerplexityTestResult | AccuracyTestResult
 
@@ -51,7 +51,7 @@ class ModelPerformanceBenchmarker:
     """Runs a configurable set of model benchmarks and returns structured results."""
 
     def __init__(self) -> None:
-        self._test_methods: Dict[
+        self._test_methods: dict[
             str, Callable[[PreTrainedTokenizerBase, PreTrainedModel, int], TestResult]
         ] = {}
         # Auto-discover methods matching declared test names
@@ -71,7 +71,7 @@ class ModelPerformanceBenchmarker:
 
     def _compute_perplexity_for_batch(
         self,
-        input_texts: List[str],
+        input_texts: list[str],
         tokenizer: PreTrainedTokenizerBase,
         model: PreTrainedModel,
     ) -> ComputePerplexityForBatchReturn:
@@ -117,13 +117,13 @@ class ModelPerformanceBenchmarker:
         batch_size: int = 16,
         num_examples: int | None = None,
     ) -> ComputePerplexityForDatasetReturn:
-        all_perplexities: List[float] = []
+        all_perplexities: list[float] = []
         effective_size = (
             min(len(dataset), num_examples) if num_examples else len(dataset)
         )
 
         for i in range(0, effective_size, batch_size):
-            batch_texts: List[str] = dataset[i : min(i + batch_size, effective_size)][
+            batch_texts: list[str] = dataset[i : min(i + batch_size, effective_size)][
                 text_column
             ]
             result = self._compute_perplexity_for_batch(batch_texts, tokenizer, model)
@@ -914,14 +914,14 @@ class ModelPerformanceBenchmarker:
         self,
         model: PreTrainedModel,
         tokenizer: PreTrainedTokenizerBase,
-        tests: Set[str],
+        tests: set[str],
         batch_size: int = 16,
         num_examples: int | None = None,
-    ) -> List[TestResult]:
+    ) -> list[TestResult]:
         if not tests:
             raise ValueError("Provide at least one test name.")
 
-        results: List[TestResult] = []
+        results: list[TestResult] = []
         for test in tests:
             method = self._test_methods.get(test)
             if method is None:

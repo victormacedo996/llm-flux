@@ -14,9 +14,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from llm_flux.core.model import ModelHandle
-
 from llm_flux.core.task_metrics import TaskMetrics
-
 
 # ── Output sub-models ─────────────────────────────────────────────────────────
 
@@ -113,10 +111,15 @@ class ProfilingConfig(BaseModel):
 
 class ProfilingPort(ABC):
     """
-    Port: a profiling strategy that produces a ``ProfilingResult``.
+    Port: a profiling strategy that produces one or more ``ProfilingResult``.
 
     Every concrete profiler (whether it wraps torch.profiler, deepspeed,
     or the custom LLMProfiler) must implement this single method.
+
+    The method returns a list of ``ProfilingResult`` to support profilers
+    that generate multiple metrics per invocation (e.g. ``LmEvalAdapter``
+    produces one result per (task, metric) pair). Profilers that produce
+    a single result must wrap it in a one-element list.
     """
 
     config: ProfilingConfig
@@ -126,20 +129,23 @@ class ProfilingPort(ABC):
         self,
         stage_label: str,
         model_handle: ModelHandle | None = None,
-    ) -> ProfilingResult:
+    ) -> list[ProfilingResult]:
         """
-        Run profiling against ``model`` and return a fully-populated
-        ``ProfilingResult``.
+        Run profiling against the model owned by ``model_handle`` and return
+        a list of fully-populated ``ProfilingResult``.
 
         Args:
-            model: The model to profile (raw ``nn.Module`` or equivalent).
             stage_label: Human-readable label describing the pipeline stage
                          at which this profiling run occurs
                          (e.g. "After GPTQ-4bit").  Stored verbatim in
                          ``ProfilingResult.pipeline_stage``.
-            model_handle: Optional ``ModelHandle`` that owns the loaded model.
-                          Useful when profiling requires tokenizer or other
-                          metadata kept by the handle.
+            model_handle: ``ModelHandle`` that owns the loaded model.
+                          Used to access both the model instance and the
+                          tokenizer.
+
+        Returns:
+            A list of ``ProfilingResult`` objects. Even single-result
+            profilers must wrap their output in a one-element list.
         """
 
     @property

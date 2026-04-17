@@ -12,9 +12,8 @@ from llm_flux.core.compression import (
     CompressionNotSupportedError,
     CompressionPort,
 )
-
-
 from llm_flux.datasets.port import DatasetConfig
+
 
 class AWQConfig(CompressionConfig):
     name: str = "awq-compression"

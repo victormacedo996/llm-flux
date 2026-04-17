@@ -5,14 +5,16 @@ Bridges HardwareProfiler + LLMProfiler + InferencePerformanceBenchmarker +
 ModelPerformanceBenchmarker to the ProfilingPort interface expected by the
 DAG executor.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional, Set
+from typing import Any
 
 from loguru import logger
 from pydantic import Field
 
+from llm_flux.core.model import ModelHandle
 from llm_flux.core.profiling import (
     AccuracyMetrics,
     LatencyMetrics,
@@ -40,7 +42,7 @@ class ComprehensiveProfilingConfig(ProfilingConfig):
 
     prompt: str = "The quick brown fox jumps over the lazy dog."
     max_new_tokens: int = 100
-    benchmark_tests: Set[str] = Field(default_factory=lambda: {"lambada"})
+    benchmark_tests: set[str] = Field(default_factory=lambda: {"lambada"})
     limit_test_samples: int | None = None
 
     # Feature flags
@@ -67,18 +69,39 @@ class ComprehensiveProfilingAdapter(ProfilingPort):
             config=ComprehensiveProfilingConfig(name="full-profiler"),
             tokenizer=tokenizer,
         )
-        result = profiler.profile(model, stage_label="Baseline")
+        results = profiler.profile(stage_label="Baseline", model_handle=handle)
     """
 
-    def __init__(self, config: ComprehensiveProfilingConfig, tokenizer: Any) -> None:
+    def __init__(
+        self,
+        config: ComprehensiveProfilingConfig,
+        tokenizer: Any = None,
+    ) -> None:
         self.config = config
         self.tokenizer = tokenizer
 
-    def profile(self, model: Any, stage_label: str) -> ProfilingResult:
+    def profile(
+        self,
+        stage_label: str,
+        model_handle: ModelHandle | None = None,
+    ) -> list[ProfilingResult]:
+        if model_handle is None:
+            raise ValueError("ComprehensiveProfilingAdapter requires a model_handle.")
+
+        model = model_handle.get_model_instance()
         extra: dict[str, Any] = {}
-        
-        # Resolve tokenizer if a handle was passed
-        actual_tokenizer = self.tokenizer.get_tokenizer() if hasattr(self.tokenizer, "get_tokenizer") else self.tokenizer
+
+        # Resolve tokenizer: prefer model_handle, fall back to self.tokenizer
+        if hasattr(model_handle, "get_tokenizer"):
+            actual_tokenizer = model_handle.get_tokenizer()
+        elif self.tokenizer is not None:
+            actual_tokenizer = (
+                self.tokenizer.get_tokenizer()
+                if hasattr(self.tokenizer, "get_tokenizer")
+                else self.tokenizer
+            )
+        else:
+            raise ValueError("ComprehensiveProfilingAdapter could not resolve a tokenizer.")
 
         # ── Hardware profile ──────────────────────────────────────────────────
         if self.config.run_hardware_profile:
@@ -135,13 +158,11 @@ class ComprehensiveProfilingAdapter(ProfilingPort):
                 max_ms=inf.max_time * 1000,
             )
             if torch.cuda.is_available():
-                memory = MemoryMetrics(
-                    peak_gpu_mb=torch.cuda.max_memory_allocated() / (1024 ** 2)
-                )
+                memory = MemoryMetrics(peak_gpu_mb=torch.cuda.max_memory_allocated() / (1024**2))
                 torch.cuda.reset_peak_memory_stats()
 
         # ── Model accuracy / perplexity ───────────────────────────────────────
-        accuracy: Optional[AccuracyMetrics] = None
+        accuracy: AccuracyMetrics | None = None
 
         if self.config.run_model_benchmark and self.config.benchmark_tests:
             logger.info("  📊 Model benchmarking...")
@@ -169,13 +190,15 @@ class ComprehensiveProfilingAdapter(ProfilingPort):
                         task_name=f"{top.test_name}:{top.metric_name}",
                     )
 
-        return ProfilingResult(
-            profiler_name=self.config.name,
-            model_label=type(model).__name__,
-            pipeline_stage=stage_label,
-            timestamp=datetime.utcnow(),
-            memory=memory,
-            latency=latency,
-            accuracy=accuracy,
-            extra=extra,
-        )
+        return [
+            ProfilingResult(
+                profiler_name=self.config.name,
+                model_label=type(model).__name__,
+                pipeline_stage=stage_label,
+                timestamp=datetime.now(),
+                memory=memory,
+                latency=latency,
+                accuracy=accuracy,
+                extra=extra,
+            )
+        ]

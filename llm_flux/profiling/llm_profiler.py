@@ -10,11 +10,10 @@ it to the pipeline.
 """
 from __future__ import annotations
 
-import time
 from collections import defaultdict
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from collections.abc import Callable
+from typing import Any
 
-import numpy as np
 import torch
 import torch.nn as nn
 from loguru import logger
@@ -44,7 +43,7 @@ class LLMProfiler:
     theoretical memory estimation.
     """
 
-    PRECISION_BYTES: Dict[PrecisionType, float] = {
+    PRECISION_BYTES: dict[PrecisionType, float] = {
         PrecisionType.FP32: 4.0,
         PrecisionType.FP16: 2.0,
         PrecisionType.BFLOAT16: 2.0,
@@ -57,14 +56,14 @@ class LLMProfiler:
         self.tokenizer = tokenizer
         self.verbose = verbose
         self.device = self._detect_device()
-        self.profile_data: Optional[LLMInfo] = None
+        self.profile_data: LLMInfo | None = None
 
     # ── Public entry points ───────────────────────────────────────────────────
 
     def profile_complete(
         self,
-        analyze_connections: Optional[AnalyzeConnections] = None,
-        estimate_memory: Optional[EstimateMemory] = None,
+        analyze_connections: AnalyzeConnections | None = None,
+        estimate_memory: EstimateMemory | None = None,
     ) -> LLMInfo:
         """Run all static analyses and optionally dynamic ones."""
         if self.verbose:
@@ -147,14 +146,14 @@ class LLMProfiler:
 
     def analyze_architecture(self) -> ArchitectureInfo:
         layer_types: defaultdict[str, int] = defaultdict(int)
-        layer_details: List[Dict[str, Any]] = []
+        layer_details: list[dict[str, Any]] = []
 
         for name, module in self.model.named_modules():
             if list(module.children()):
                 continue  # skip container modules; only leaf nodes
             layer_type = type(module).__name__
             layer_types[layer_type] += 1
-            info: Dict[str, Any] = {
+            info: dict[str, Any] = {
                 "name": name or layer_type,
                 "type": layer_type,
                 "parameters": sum(p.numel() for p in module.parameters()),
@@ -171,7 +170,7 @@ class LLMProfiler:
             max_depth=max_depth,
         )
 
-    def _extract_layer_attributes(self, module: nn.Module, info: Dict[str, Any]) -> None:
+    def _extract_layer_attributes(self, module: nn.Module, info: dict[str, Any]) -> None:
         if hasattr(module, "in_features") and hasattr(module, "out_features"):
             info["input_size"] = module.in_features
             info["output_size"] = module.out_features
@@ -212,7 +211,7 @@ class LLMProfiler:
         cls = type(module).__name__.lower()
         return any(kw in cls for kw in ("attention", "attn", "multihead"))
 
-    def _filter_leaf_candidates(self, names: List[str]) -> List[str]:
+    def _filter_leaf_candidates(self, names: list[str]) -> list[str]:
         return [n for n in names if not any(o != n and o.startswith(n + ".") for o in names)]
 
     # ── Memory estimation ─────────────────────────────────────────────────────
@@ -231,7 +230,7 @@ class LLMProfiler:
         attention_info = self.analyze_attention_layers()
         total_params = param_info.total
 
-        estimates: Dict[str, MemoryEstimate] = {}
+        estimates: dict[str, MemoryEstimate] = {}
         for precision in PrecisionType:
             bpp = self.PRECISION_BYTES[precision]
             weights_mb = (total_params * bpp) / (1024 ** 2)
@@ -273,7 +272,7 @@ class LLMProfiler:
 
     def _estimate_training_memory(
         self, total: int, bpp: float, optimizer: str, grad_accum: int, precision: PrecisionType
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         grad_mb = (total * bpp) / (1024 ** 2) * grad_accum
         opt_bytes = {"adamw": 8, "sgd": bpp, "adafactor": 4}.get(optimizer.lower(), 8)
         opt_mb = (total * opt_bytes) / (1024 ** 2)
@@ -306,9 +305,9 @@ class LLMProfiler:
 
     def analyze_connections(
         self,
-        sample_input: Optional[Any] = None,
-        input_shape: Optional[Tuple[int, ...]] = None,
-        input_sample: Optional[Callable[[], Any]] = None,
+        sample_input: Any | None = None,
+        input_shape: tuple[int, ...] | None = None,
+        input_sample: Callable[[], Any] | None = None,
     ) -> ConnectionAnalysisInfo:
         if self.verbose:
             logger.info("🔗 Analyzing layer connections...")
@@ -324,8 +323,8 @@ class LLMProfiler:
 
     def _prepare_inference_input(
         self,
-        input_shape: Optional[Tuple[int, ...]],
-        input_sample: Optional[Callable[[], Any]],
+        input_shape: tuple[int, ...] | None,
+        input_sample: Callable[[], Any] | None,
     ) -> Any:
         if input_sample is not None:
             return self._move_to_device(input_sample())
@@ -352,7 +351,7 @@ class LLMProfiler:
             return self.model(*inp)
         return self.model(inp)
 
-    def _build_empty_graph(self) -> Dict[str, LayerConnectionInfo]:
+    def _build_empty_graph(self) -> dict[str, LayerConnectionInfo]:
         return {
             (name or type(m).__name__): LayerConnectionInfo(
                 name=name or type(m).__name__,
@@ -364,12 +363,12 @@ class LLMProfiler:
             if not list(m.children())
         }
 
-    def _analyze_connections_fx(self, inp: Any) -> Optional[ConnectionAnalysisInfo]:
+    def _analyze_connections_fx(self, inp: Any) -> ConnectionAnalysisInfo | None:
         try:
             import torch.fx
             traced = torch.fx.symbolic_trace(self.model)
-            graph: Dict[str, LayerConnectionInfo] = {}
-            node_to_name: Dict[Any, str] = {}
+            graph: dict[str, LayerConnectionInfo] = {}
+            node_to_name: dict[Any, str] = {}
 
             for node in traced.graph.nodes:
                 if node.op != "call_module":
@@ -400,11 +399,11 @@ class LLMProfiler:
                 logger.debug(f"torch.fx analysis failed: {e}")
             return None
 
-    def _analyze_connections_hooks(self, inp: Any) -> Optional[ConnectionAnalysisInfo]:
+    def _analyze_connections_hooks(self, inp: Any) -> ConnectionAnalysisInfo | None:
         try:
             graph = self._build_empty_graph()
-            execution_order: List[str] = []
-            shape_info: Dict[str, Dict[str, Any]] = {}
+            execution_order: list[str] = []
+            shape_info: dict[str, dict[str, Any]] = {}
             hooks = []
 
             def make_hook(layer_name: str):
@@ -449,9 +448,9 @@ class LLMProfiler:
         return self._analyze_connection_patterns(self._build_empty_graph(), "basic")
 
     def _attach_shapes_via_hooks(
-        self, inp: Any, graph: Dict[str, LayerConnectionInfo]
+        self, inp: Any, graph: dict[str, LayerConnectionInfo]
     ) -> None:
-        shape_info: Dict[str, Dict[str, Optional[List[int]]]] = {}
+        shape_info: dict[str, dict[str, list[int] | None]] = {}
         hooks = []
 
         def make_hook(name: str):
@@ -479,7 +478,7 @@ class LLMProfiler:
                 graph[name].output_shape = shapes["output_shape"]
 
     def _analyze_connection_patterns(
-        self, graph: Dict[str, LayerConnectionInfo], method: str
+        self, graph: dict[str, LayerConnectionInfo], method: str
     ) -> ConnectionAnalysisInfo:
         return ConnectionAnalysisInfo(
             total_connections=sum(len(v.output_layers) for v in graph.values()),

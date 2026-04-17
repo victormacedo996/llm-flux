@@ -5,8 +5,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import Field
-
 from llm_flux.core.compression import (
     CompressionConfig,
     CompressionNotSupportedError,
@@ -45,7 +43,8 @@ class BitsAndBytesAdapter(CompressionPort):
     def compress(self, model: Any) -> Any:
         try:
             import bitsandbytes  # noqa: F401
-            from transformers import BitsAndBytesConfig as HFBnBConfig, AutoModelForCausalLM
+            from transformers import AutoModelForCausalLM
+            from transformers import BitsAndBytesConfig as HFBnBConfig
         except ImportError as e:
             raise CompressionNotSupportedError(
                 f"bitsandbytes is not installed. Run: uv sync --extra bitsandbytes. "

@@ -28,9 +28,10 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+
 from loguru import logger
 
-TINY_MODE = False  # Set to True for lightning-fast validation on CPU
+TINY_MODE = True  # Set to True for lightning-fast validation on CPU
 
 import torch
 
@@ -42,6 +43,7 @@ os.environ["HF_DATASETS_CACHE"] = CACHE_DIR
 
 if TINY_MODE:
     MODEL_ID = "hf-internal-testing/tiny-random-LlamaForCausalLM"
+    # MODEL_ID = "Qwen/Qwen3-0.6B"
     CALIBRATION_DATASET = "dummy_dataset.jsonl"
     HEALING_DATASET = "dummy_dataset.jsonl"
     CALIBRATION_SAMPLES = 2
@@ -51,6 +53,7 @@ if TINY_MODE:
     HEALING_STEPS = 1
     USE_FP16 = False
     AWQ_CALIBRATION_SAMPLES = 2
+    TEST_LIMIT = 10
 else:
     MODEL_ID = "Qwen/Qwen3-0.6B"
     CALIBRATION_DATASET = "allenai/c4"
@@ -62,36 +65,24 @@ else:
     HEALING_STEPS = 100
     USE_FP16 = HAS_GPU
     AWQ_CALIBRATION_SAMPLES = 32
-
-# ── lm-eval tasks ───────────────────────────────────────────────────────────────
-TASKS = [
-    "mmlu_pro",
-    "hellaswag",
-    "gsm8k",
-    "math_500",
-    "arc_challenge",
-    "lambada_openai",
-    "truthfulqa_mc2",
-]
+    TEST_LIMIT = 100
 
 # ───────────────────────────────────────────────────────────────────────────────
-from llm_flux.adapters.model.huggingface import HFModelHandle
 from llm_flux.adapters.compression.depth_pruning import (
     DepthPruningAdapter,
     DepthPruningConfig,
     angular_distance_importance,
 )
-from llm_flux.adapters.compression.awq import AWQAdapter, AWQConfig
-from llm_flux.adapters.healing.hf_trainer import HFTrainerAdapter
+from llm_flux.adapters.model.huggingface import HFModelHandle
+from llm_flux.adapters.profiling import LmEvalAdapter, LmEvalConfig
 from llm_flux.core.model import ModelSource
-from llm_flux.core.healing import HealingConfig, LoRAConfig
 from llm_flux.core.pipeline import Pipeline, PipelineStep
 from llm_flux.datasets.port import DatasetConfig
-from llm_flux.adapters.profiling import LmEvalAdapter, LmEvalConfig
 from llm_flux.runner import run_pipeline
 
 logger.remove()
 logger.add(sys.stdout, format="<level>{message}</level>")
+
 
 def run_experiment_for_ratio(ratio: float):
     logger.info(
@@ -170,33 +161,41 @@ def run_experiment_for_ratio(ratio: float):
     # )
 
     # ── 4. Build pipeline ───────────────────────────────────────────────────────
-    # Baseline profiling
-    profiler = LmEvalAdapter(
-        config=LmEvalConfig(
-            name=f"arithmetic_1dc profiler",
-            description=f"lm-evaluation-harness profiling",
-            tasks='gsm8k',
-            limit=10,
-            no_cache=True,
-            num_fewshot=5
-        ),
-    )
+    # Build one LmEvalAdapter per task programmatically so the same config
+    # (limit, num_fewshot, etc.) is applied consistently to every task and
+    # the set of evaluated tasks is trivially extensible via the TASKS list.
+    TASKS = [
+        "gsm8k",
+        "lambada",
+    ]
 
-    # # Post-healing profiling
-    # post_heal_steps = make_lm_eval_steps(
-    #     label_prefix="Post-Heal",
-    #     stage_tag="post-heal",
-    #     model_handle=model_handle,
-    #     limit=LIMIT_TEST_SAMPLES,
-    # )
+    def build_profiler(task: str) -> LmEvalAdapter:
+        return LmEvalAdapter(
+            config=LmEvalConfig(
+                name=task,
+                description=f"lm-evaluation-harness {task}",
+                tasks=task,
+                limit=TEST_LIMIT,
+                no_cache=True,
+                num_fewshot=5,
+                # Enable profiling so every LmEvalAdapter step captures
+                # latency, memory and hardware info independently.
+                run_hardware_profile=True,
+                run_llm_profile=True,
+                run_inference_benchmark=True,
+            ),
+        )
 
-    # # Post-AWQ profiling
-    # post_awq_steps = make_lm_eval_steps(
-    #     label_prefix="Post-AWQ",
-    #     stage_tag="post-awq",
-    #     model_handle=model_handle,
-    #     limit=LIMIT_TEST_SAMPLES,
-    # )
+    task_profilers = {task: build_profiler(task) for task in TASKS}
+
+    def eval_steps(label_prefix: str) -> list[PipelineStep]:
+        return [
+            PipelineStep(
+                label=f"{label_prefix} lm-eval {task}",
+                port=profiler,
+            )
+            for task, profiler in task_profilers.items()
+        ]
 
     pipeline = Pipeline(
         name=f"lm_eval_prune_{int(ratio * 100)}pct",
@@ -207,9 +206,9 @@ def run_experiment_for_ratio(ratio: float):
         ),
         steps=[
             PipelineStep(label="Load Model", port=model_handle),
-            PipelineStep(label="Baseline lm-eval", port=profiler),
+            *eval_steps("Baseline"),
             PipelineStep(label="Depth Prune", port=depth_pruner),
-            PipelineStep(label="post prune lm-eval", port=profiler),
+            *eval_steps("Post-Prune"),
         ],
     )
 
@@ -233,7 +232,6 @@ if __name__ == "__main__":
 
     logger.info(f"TINY_MODE : {TINY_MODE}")
     logger.info(f"Model     : {MODEL_ID}")
-    logger.info(f"Tasks     : {TASKS}")
     logger.info(f"Limit     : {LIMIT_TEST_SAMPLES} samples/task")
     logger.info(f"GPU available: {HAS_GPU}")
 
