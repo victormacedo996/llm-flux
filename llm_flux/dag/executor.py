@@ -10,6 +10,7 @@ from typing import Any
 import networkx as nx
 from loguru import logger
 
+from llm_flux.adapters.compression.depth_pruning import _cleanup_temp_cache_dirs
 from llm_flux.core.compression import CompressionNotSupportedError
 from llm_flux.core.model import ModelHandle
 from llm_flux.core.profiling import ProfilingResult
@@ -39,58 +40,69 @@ class PipelineExecutor:
 
         logger.info(f"🚀 Starting pipeline: {self.dag.graph.get('name', '')}")
         logger.info(f"   {step_count} step(s) to execute\n")
-        for node_id in nx.topological_sort(self.dag):
-            node = self.dag.nodes[node_id]
-            step = node["step"]
-            port = step.port
-            idx = node["index"] + 1
 
-            logger.info(f"[{idx}/{step_count}] ▶ {step.kind.upper()} — {step.label}")
+        try:
+            for node_id in nx.topological_sort(self.dag):
+                node = self.dag.nodes[node_id]
+                step = node["step"]
+                port = step.port
+                idx = node["index"] + 1
 
-            try:
-                match step.kind:
-                    case "load":
-                        model = port.load()
-                        model_handle = port
-                        logger.info(f"  ✅ Model loaded: {port.name}")
+                logger.info(f"[{idx}/{step_count}] ▶ {step.kind.upper()} — {step.label}")
 
-                    case "compress":
-                        compressed_handle = port.compress(model_handle)
-                        model_handle = compressed_handle
-                        model = compressed_handle.get_model_instance()
-                        logger.info(f"  ✅ Compression applied: {port.label}")
+                try:
+                    match step.kind:
+                        case "load":
+                            model = port.load()
+                            model_handle = port
+                            logger.info(f"  ✅ Model loaded: {port.name}")
 
-                    case "profile":
-                        results = port.profile(
-                            stage_label=step.label,
-                            model_handle=model_handle,
-                        )
-                        # ProfilingPort.profile contract: returns list[ProfilingResult].
-                        # Accept a single ProfilingResult for backward compatibility.
-                        if not isinstance(results, list):
-                            results = [results]
-                        profiling_records.extend(results)
-                        logger.info(f"  ✅ {len(results)} profiling result(s) — {step.label}")
-                        for r in results:
-                            logger.info(f"  ✅ {r.summary()}")
+                        case "compress":
+                            compressed_handle = port.compress(model_handle)
+                            model_handle = compressed_handle
+                            if port.should_reload_after_compress():
+                                logger.info(
+                                    f"  🔄 Reloading compressed model from disk "
+                                    f"({compressed_handle._source.identifier})..."
+                                )
+                                compressed_handle.load()
+                            model = compressed_handle.get_model_instance()
+                            logger.info(f"  ✅ Compression applied: {port.label}")
 
-                    case "heal":
-                        model = port.heal(model)
-                        logger.info(f"  ✅ Healing complete: {port.label}")
+                        case "profile":
+                            results = port.profile(
+                                stage_label=step.label,
+                                model_handle=model_handle,
+                            )
+                            # ProfilingPort.profile contract: returns list[ProfilingResult].
+                            # Accept a single ProfilingResult for backward compatibility.
+                            if not isinstance(results, list):
+                                results = [results]
+                            profiling_records.extend(results)
+                            logger.info(f"  ✅ {len(results)} profiling result(s) — {step.label}")
+                            for r in results:
+                                logger.info(f"  ✅ {r.summary()}")
 
-            except CompressionNotSupportedError as e:
-                logger.error(
-                    f"  ❌ Compression step '{step.label}' failed: {e}\n"
-                    "     Technique is incompatible with the current model. "
-                    "Aborting pipeline."
-                )
-                raise
+                        case "heal":
+                            model = port.heal(model)
+                            logger.info(f"  ✅ Healing complete: {port.label}")
 
-            except Exception as e:
-                logger.error(f"  ❌ Step '{step.label}' raised an unexpected error: {e}")
-                raise e
+                except CompressionNotSupportedError as e:
+                    logger.error(
+                        f"  ❌ Compression step '{step.label}' failed: {e}\n"
+                        "     Technique is incompatible with the current model. "
+                        "Aborting pipeline."
+                    )
+                    raise
 
-            logger.info("")  # blank line between steps
+                except Exception as e:
+                    logger.error(f"  ❌ Step '{step.label}' raised an unexpected error: {e}")
+                    raise e
+
+                logger.info("")  # blank line between steps
+
+        finally:
+            _cleanup_temp_cache_dirs()
 
         finished_at = datetime.now()
         logger.info(f"🏁 Pipeline complete in {(finished_at - started_at).total_seconds():.1f} s")

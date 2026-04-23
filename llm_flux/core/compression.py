@@ -84,3 +84,13 @@ class CompressionPort(ABC):
     def label(self) -> str:
         """Short label for DAG nodes and log lines."""
         return self.config.name
+
+    def should_reload_after_compress(self) -> bool:
+        """
+        Whether the compressed model should be reloaded from disk before use.
+
+        Override in adapters that modify model structure in-place (e.g., DepthPruning)
+        where internal state needs to be reinitialized via save+load cycle.
+        Default: False (most compression adapters don't need this).
+        """
+        return False

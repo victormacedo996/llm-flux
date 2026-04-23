@@ -25,6 +25,18 @@ from llm_flux.core.compression import (
 from llm_flux.core.model import CompressedModelHandle, ModelHandle
 from llm_flux.datasets.port import DatasetConfig
 
+_TEMP_CACHE_DIRS: list[str] = []
+
+
+def _cleanup_temp_cache_dirs() -> None:
+    import shutil
+
+    if _TEMP_CACHE_DIRS:
+        logger.info(f"  🗑️  Cleaning up {len(_TEMP_CACHE_DIRS)} temporary cache directory(ies)...")
+        for path in _TEMP_CACHE_DIRS:
+            shutil.rmtree(path, ignore_errors=True)
+        _TEMP_CACHE_DIRS.clear()
+
 
 class DepthPruningConfig(CompressionConfig):
     name: str = "depth-pruning"
@@ -32,6 +44,8 @@ class DepthPruningConfig(CompressionConfig):
     calibration_samples: int = 32
     calibration_dataset: DatasetConfig
     output_dir: str | None = None
+    persist_compression_cache: bool = False
+    cleanup_cache_after_pipeline: bool = True
 
 
 def get_transformer_layers(model: Any) -> nn.ModuleList:
@@ -135,6 +149,9 @@ class DepthPruningAdapter(CompressionPort):
         self.tokenizer = tokenizer
         self.importance_fn = importance_fn or angular_distance_importance
 
+    def should_reload_after_compress(self) -> bool:
+        return True
+
     def compress(self, model_handle: ModelHandle) -> ModelHandle:
         model = model_handle.get_model_instance()
 
@@ -163,7 +180,12 @@ class DepthPruningAdapter(CompressionPort):
 
         pruned_model = self._prune_layers(model, layers_to_drop)
 
-        output_dir = self.config.output_dir or tempfile.mkdtemp(prefix="depth_pruned_")
+        if self.config.persist_compression_cache:
+            output_dir = self.config.output_dir or tempfile.mkdtemp(prefix="depth_pruned_")
+        else:
+            output_dir = tempfile.mkdtemp(prefix="depth_pruned_")
+            _TEMP_CACHE_DIRS.append(output_dir)
+
         pruned_model.save_pretrained(output_dir)
 
         actual_tokenizer = (

@@ -47,7 +47,8 @@ USE_FP16 = HAS_GPU
 TEST_LIMIT = 10
 COMPRESSION_RATIO = 0.2
 CALIBRATION_SAMPLES = 5
-
+PERSIST_COMPRESSION_CACHE = True
+COMPRESSION_CACHE_DIR = str(OUTPUT_DIR / "compression_cache")
 
 
 os.environ["HF_HOME"] = CACHE_DIR
@@ -113,22 +114,24 @@ def main():
     )
 
     depth_pruner = DepthPruningAdapter(
-    config=DepthPruningConfig(
-        name=f"depth-pruning-{COMPRESSION_RATIO * 100:.0f}pct",
-        description=f"Drops {COMPRESSION_RATIO * 100:.0f}% of layers",
-        pruning_ratio=COMPRESSION_RATIO,
-        calibration_samples=CALIBRATION_SAMPLES,
-        calibration_dataset=DatasetConfig(
-            source=KD_DATASET,
-            subset=None,
-            split="train",
-            streaming=False,
-            max_samples=CALIBRATION_SAMPLES,
+        config=DepthPruningConfig(
+            name=f"depth-pruning-{COMPRESSION_RATIO * 100:.0f}pct",
+            description=f"Drops {COMPRESSION_RATIO * 100:.0f}% of layers",
+            pruning_ratio=COMPRESSION_RATIO,
+            calibration_samples=CALIBRATION_SAMPLES,
+            calibration_dataset=DatasetConfig(
+                source=KD_DATASET,
+                subset=None,
+                split="train",
+                streaming=False,
+                max_samples=CALIBRATION_SAMPLES,
+            ),
+            output_dir=COMPRESSION_CACHE_DIR if PERSIST_COMPRESSION_CACHE else None,
+            persist_compression_cache=PERSIST_COMPRESSION_CACHE,
         ),
-    ),
-    tokenizer=student_handle,
-    importance_fn=angular_distance_importance,
-)
+        tokenizer=student_handle,
+        importance_fn=angular_distance_importance,
+    )
 
     # ── 5. Knowledge Distillation Adapter ────────────────────────────────────
     # The teacher is the uncompressed model, student is the compressed model.

@@ -24,7 +24,29 @@ inputs = {
   cloud_type      = "SECURE"   # "SECURE" for Secure Cloud
   gpu_type_ids    = ["NVIDIA GeForce RTX 4090"]
   gpu_count       = 1
-  data_center_ids = ["EUR-NO-1"]
+  data_center_ids = [
+    # "AP-JP-1",
+  #  "CA-MTL-3", 
+  #  "CA-MTL-4", 
+   "EU-CZ-1", 
+  #  "EU-NL-1", 
+  #  "EU-RO-1", 
+  #  "EU-SE-1", 
+  #  "EUR-IS-1", 
+  #  "EUR-IS-3",
+  #  "EUR-NO-1", 
+  #  "US-CA-2", 
+  #  "US-GA-2", 
+  #  "US-IL-1", 
+  #  "US-KS-2", 
+  #  "US-MO-1", 
+  #  "US-MO-2", 
+  #  "US-NC-1",
+  #  "US-NC-2", 
+  #  "US-NE-1", 
+  #  "US-TX-3", 
+  #  "US-WA-1"
+  ]
 
 #   | value must be one of 'NVIDIA GeForce RTX 4090', 'NVIDIA A40', 'NVIDIA RTX A5000', 
 #   | 'NVIDIA GeForce RTX
