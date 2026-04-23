@@ -55,7 +55,9 @@ class PipelineExecutor:
                         logger.info(f"  ✅ Model loaded: {port.name}")
 
                     case "compress":
-                        model = port.compress(model)
+                        compressed_handle = port.compress(model_handle)
+                        model_handle = compressed_handle
+                        model = compressed_handle.get_model_instance()
                         logger.info(f"  ✅ Compression applied: {port.label}")
 
                     case "profile":

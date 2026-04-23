@@ -268,3 +268,4 @@ terraform.rc
 # planout
 
 .terragrunt-cache/
+kd_results/

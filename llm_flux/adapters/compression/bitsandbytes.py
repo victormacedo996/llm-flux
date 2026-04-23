@@ -1,8 +1,10 @@
 """
 adapters/compression/bitsandbytes.py — BitsAndBytes quantization adapter.
 """
+
 from __future__ import annotations
 
+import tempfile
 from typing import Any
 
 from llm_flux.core.compression import (
@@ -10,6 +12,7 @@ from llm_flux.core.compression import (
     CompressionNotSupportedError,
     CompressionPort,
 )
+from llm_flux.core.model import CompressedModelHandle, ModelHandle
 
 
 class BitsAndBytesConfig(CompressionConfig):
@@ -20,16 +23,19 @@ class BitsAndBytesConfig(CompressionConfig):
     or ``load_in_8bit=True`` for INT8.
     """
 
+    name: str = "bitsandbytes-compression"
     load_in_4bit: bool = True
     load_in_8bit: bool = False
-    bnb_4bit_compute_dtype: str = "bfloat16"  # e.g. "float16", "bfloat16"
-    bnb_4bit_quant_type: str = "nf4"           # "nf4" or "fp4"
+    bnb_4bit_compute_dtype: str = "bfloat16"
+    bnb_4bit_quant_type: str = "nf4"
     bnb_4bit_use_double_quant: bool = True
+    output_dir: str | None = None
 
 
 class BitsAndBytesAdapter(CompressionPort):
     """
-    Re-loads the model with BitsAndBytes quantization config applied.
+    Re-loads the model with BitsAndBytes quantization config applied,
+    saves the quantized model to disk, and returns a CompressedModelHandle.
 
     Note: BitsAndBytes quantization is applied at load time (not post-training).
     If the model was already loaded, this adapter unloads and reloads it.
@@ -40,10 +46,10 @@ class BitsAndBytesAdapter(CompressionPort):
         self.config = config
         self.model_handle = model_handle
 
-    def compress(self, model: Any) -> Any:
+    def compress(self, model_handle: ModelHandle) -> ModelHandle:
         try:
             import bitsandbytes  # noqa: F401
-            from transformers import AutoModelForCausalLM
+            from transformers import AutoModelForCausalLM, AutoTokenizer
             from transformers import BitsAndBytesConfig as HFBnBConfig
         except ImportError as e:
             raise CompressionNotSupportedError(
@@ -51,21 +57,35 @@ class BitsAndBytesAdapter(CompressionPort):
                 f"Original error: {e}"
             )
 
-        cfg = self.config
+        source = self.model_handle.source
         bnb_cfg = HFBnBConfig(
-            load_in_4bit=cfg.load_in_4bit,
-            load_in_8bit=cfg.load_in_8bit,
-            bnb_4bit_compute_dtype=cfg.bnb_4bit_compute_dtype,
-            bnb_4bit_quant_type=cfg.bnb_4bit_quant_type,
-            bnb_4bit_use_double_quant=cfg.bnb_4bit_use_double_quant,
+            load_in_4bit=self.config.load_in_4bit,
+            load_in_8bit=self.config.load_in_8bit,
+            bnb_4bit_compute_dtype=self.config.bnb_4bit_compute_dtype,
+            bnb_4bit_quant_type=self.config.bnb_4bit_quant_type,
+            bnb_4bit_use_double_quant=self.config.bnb_4bit_use_double_quant,
         )
 
-        # Re-load the model with quantization config
-        source = self.model_handle.source
         quantized = AutoModelForCausalLM.from_pretrained(
             source.identifier,
             quantization_config=bnb_cfg,
             trust_remote_code=source.trust_remote_code,
             device_map="auto",
         )
-        return quantized
+
+        output_dir = self.config.output_dir or tempfile.mkdtemp(prefix="bnb_compressed_")
+        quantized.save_pretrained(output_dir)
+
+        tokenizer = AutoTokenizer.from_pretrained(
+            source.identifier,
+            trust_remote_code=source.trust_remote_code,
+        )
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+
+        return CompressedModelHandle(
+            original_handle=self.model_handle,
+            compressed_path=output_dir,
+            compressed_model=quantized,
+            tokenizer=tokenizer,
+        )

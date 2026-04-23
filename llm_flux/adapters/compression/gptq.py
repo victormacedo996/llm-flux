@@ -1,8 +1,11 @@
 """
 adapters/compression/gptq.py — GPTQ quantization adapter (via auto-gptq).
 """
+
 from __future__ import annotations
 
+import tempfile
+from pathlib import Path
 from typing import Any
 
 from pydantic import Field
@@ -12,6 +15,7 @@ from llm_flux.core.compression import (
     CompressionNotSupportedError,
     CompressionPort,
 )
+from llm_flux.core.model import CompressedModelHandle, ModelHandle
 from llm_flux.datasets.port import DatasetConfig
 
 
@@ -22,6 +26,7 @@ class GPTQConfig(CompressionConfig):
     desc_act: bool = False
     calibration_samples: int = 128
     calibration_dataset: DatasetConfig
+    output_dir: str | None = None
 
 
 class GPTQAdapter(CompressionPort):
@@ -37,7 +42,7 @@ class GPTQAdapter(CompressionPort):
         self.config = config
         self.tokenizer = tokenizer
 
-    def compress(self, model: Any) -> Any:
+    def compress(self, model_handle: ModelHandle) -> ModelHandle:
         try:
             from auto_gptq import AutoGPTQForCausalLM, BaseQuantizeConfig
         except ImportError as e:
@@ -45,6 +50,7 @@ class GPTQAdapter(CompressionPort):
                 f"auto-gptq is not installed. Run: uv sync --extra gptq. Error: {e}"
             )
 
+        model = model_handle.get_model_instance()
         quantize_config = BaseQuantizeConfig(
             bits=self.config.bits,
             group_size=self.config.group_size,
@@ -52,17 +58,20 @@ class GPTQAdapter(CompressionPort):
         )
 
         try:
-            from pathlib import Path
+            from llm_flux.datasets.huggingface import HFDatasetAdapter
+            from llm_flux.datasets.local import LocalDatasetAdapter
 
             cfg = self.config.calibration_dataset
             if Path(cfg.source).exists():
-                from llm_flux.datasets.local import LocalDatasetAdapter
                 dataset = LocalDatasetAdapter(cfg).load()
             else:
-                from llm_flux.datasets.huggingface import HFDatasetAdapter
                 dataset = HFDatasetAdapter(cfg).load()
 
-            actual_tokenizer = self.tokenizer.get_tokenizer() if hasattr(self.tokenizer, "get_tokenizer") else self.tokenizer
+            actual_tokenizer = (
+                self.tokenizer.get_tokenizer()
+                if hasattr(self.tokenizer, "get_tokenizer")
+                else self.tokenizer
+            )
             examples = []
             for ex in dataset:
                 text = ex.get("text", "")
@@ -76,8 +85,15 @@ class GPTQAdapter(CompressionPort):
                 quantize_config=quantize_config,
             )
             gptq_model.quantize(examples)
-            return gptq_model
+
+            output_dir = self.config.output_dir or tempfile.mkdtemp(prefix="gptq_compressed_")
+            gptq_model.save_pretrained(output_dir)
+
+            return CompressedModelHandle(
+                original_handle=model_handle,
+                compressed_path=output_dir,
+                compressed_model=gptq_model,
+                tokenizer=actual_tokenizer,
+            )
         except Exception as e:
-            raise CompressionNotSupportedError(
-                f"GPTQ compression failed on this model: {e}"
-            ) from e
+            raise CompressionNotSupportedError(f"GPTQ compression failed on this model: {e}") from e

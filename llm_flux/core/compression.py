@@ -4,12 +4,14 @@ core/compression.py — Port: Compression algorithm abstraction.
 Add a new compression technique by subclassing CompressionPort and
 implementing `compress()`. No existing code needs to change (Open/Closed).
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
 
 from pydantic import BaseModel
+
+from llm_flux.core.model import ModelHandle
 
 
 class CompressionConfig(BaseModel):
@@ -50,24 +52,33 @@ class CompressionPort(ABC):
       by this technique (e.g. wrong architecture, missing quantization targets).
     """
 
-    config: CompressionConfig
+    def __init__(self, config: CompressionConfig):
+        self.config = config
 
     @abstractmethod
-    def compress(self, model: Any) -> Any:
+    def compress(self, model_handle: ModelHandle) -> ModelHandle:
         """
-        Apply compression and return the (possibly new) model object.
+        Apply compression and return a CompressedModelHandle.
+
+        The adapter MUST save the compressed model to disk and return a
+        CompressedModelHandle pointing to that saved artifact. This enables:
+          - Loading the compressed model independently later
+          - Using the compressed model as student in knowledge distillation
 
         Args:
-            model: Raw model object returned by a previous ``ModelHandle.load()``
-                   or ``CompressionPort.compress()`` call.
+            model_handle: ModelHandle of the uncompressed model (as loaded
+                by a preceding LOAD step in the pipeline).
 
         Returns:
-            The compressed model object.  May be the same object mutated
-            in-place or a brand-new object, depending on the algorithm.
+            CompressedModelHandle wrapping the saved compressed model.
+            The compressed model is saved to disk at the path in
+            CompressedModelHandle.source.identifier.
 
         Raises:
-            CompressionNotSupportedError: If this technique cannot handle the model.
+            CompressionNotSupportedError: If this technique cannot handle
+                the model (wrong architecture, missing deps, etc.).
         """
+        raise NotImplementedError("Implement this method to apply compression to the model.")
 
     @property
     def label(self) -> str:

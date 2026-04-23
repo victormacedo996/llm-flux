@@ -5,8 +5,14 @@ from llm_flux.core.compression import (
     CompressionNotSupportedError,
     CompressionPort,
 )
-from llm_flux.core.healing import HealingConfig, HealingPort, LoRAConfig
-from llm_flux.core.model import ModelHandle, ModelSource
+from llm_flux.core.healing import (
+    DistillationConfig,
+    HealingConfig,
+    HealingPort,
+    LoRAConfig,
+    SaveFormat,
+)
+from llm_flux.core.model import CompressedModelHandle, ModelHandle, ModelSource
 from llm_flux.core.pipeline import Pipeline, PipelineStep
 from llm_flux.core.profiling import (
     AccuracyMetrics,
@@ -19,9 +25,11 @@ from llm_flux.core.profiling import (
 from llm_flux.core.results import PipelineRunResult
 
 __all__ = [
+    "CompressedModelHandle",
     "CompressionConfig",
     "CompressionNotSupportedError",
     "CompressionPort",
+    "DistillationConfig",
     "HealingConfig",
     "HealingPort",
     "LoRAConfig",
@@ -29,6 +37,7 @@ __all__ = [
     "ModelSource",
     "Pipeline",
     "PipelineStep",
+    "SaveFormat",
     "AccuracyMetrics",
     "LatencyMetrics",
     "MemoryMetrics",

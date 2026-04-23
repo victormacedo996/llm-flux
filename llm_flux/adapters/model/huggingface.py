@@ -24,6 +24,7 @@ class HFModelHandle(ModelHandle):
         self.source = source
         self._model = None
         self._tokenizer = None
+        self.is_model_loaded = False
 
     @property
     def name(self) -> str:
@@ -50,6 +51,7 @@ class HFModelHandle(ModelHandle):
         if self._tokenizer.pad_token is None:
             self._tokenizer.pad_token = self._tokenizer.eos_token
         logger.info(f"  Model loaded on device: {next(self._model.parameters()).device}")
+        self.is_model_loaded = True
         return self._model
 
     def get_tokenizer(self) -> object:
@@ -66,6 +68,7 @@ class HFModelHandle(ModelHandle):
             self._model = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+        self.is_model_loaded = False
         logger.info(f"  Model '{self.name}' unloaded.")
     
 
@@ -74,4 +77,7 @@ class HFModelHandle(ModelHandle):
         if self._model is None:
             raise RuntimeError("Call load() before accessing the model instance.")
         return self._model
+    
+    def get_is_model_loaded(self) -> bool:
+        return self.is_model_loaded
 

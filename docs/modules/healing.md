@@ -324,26 +324,139 @@ case "heal":
 
 ---
 
-## 8. Exemplo de Uso
+## 8. Knowledge Distillation — `KnowledgeDistillationAdapter`
+
+### 8.1 Overview
+
+`KnowledgeDistillationAdapter` implements `HealingPort` using Knowledge Distillation (KD) to heal compressed models. It uses the original uncompressed model as the **teacher** and the compressed model as the **student**.
+
+**Key feature**: Pre-compute teacher logits and unload the teacher before student training, minimizing peak GPU memory.
+
+### 8.2 Constructor
 
 ```python
-from llm_flux.adapters.healing import HFTrainerAdapter
-from llm_flux.core.healing import HealingConfig, LoRAConfig
-from llm_flux.datasets.port import DatasetConfig
+def __init__(
+    self,
+    config: DistillationConfig,
+    tokenizer: Any = None,
+    teacher_model_handle: Any = None,
+) -> None:
+```
 
-healer = HFTrainerAdapter(
-    config=HealingConfig(
-        name="lora-recovery",
-        description="LoRA fine-tuning (r=16) para recuperar perplexidade",
+- `config`: `DistillationConfig` with dataset, KD hyperparameters, and training settings.
+- `tokenizer`: ModelHandle or tokenizer for tokenizing the dataset.
+- `teacher_model_handle`: **Must** be a `ModelHandle` instance that holds the original uncompressed teacher model. Must have `load()` called before `heal()`.
+
+### 8.3 Two KD Modes
+
+**Mode 1 — Precompute (default, memory efficient)**:
+```
+1. Load teacher model (from teacher_model_handle)
+2. Generate teacher logits for entire dataset → save to .pt file
+3. Unload teacher model (free GPU memory)
+4. Load student model (compressed, passed to heal())
+5. Apply LoRA (if configured)
+6. Train student using cached teacher logits
+```
+
+**Mode 2 — Online (higher memory)**:
+```
+1. Load teacher model (from teacher_model_handle)
+2. Load student model (compressed, passed to heal())
+3. Apply LoRA (if configured)
+4. Train student with on-the-fly teacher logits
+```
+
+### 8.4 `DistillationConfig` Parameters
+
+```python
+class DistillationConfig(BaseModel):
+    name: str = "knowledge-distillation"
+    description: str = ""
+
+    dataset: DatasetConfig
+
+    temperature: float = 2.0      # softening temperature
+    alpha: float = 0.5             # balance hard (CE) vs soft (KD) targets
+    precompute_teacher_logits: bool = True
+    teacher_logits_output_dir: str = "./kd_logits"
+
+    # Training knobs (same as HealingConfig)
+    max_steps: int = 500
+    learning_rate: float = 2e-4
+    per_device_train_batch_size: int = 4
+    gradient_accumulation_steps: int = 4
+    fp16: bool = True
+    output_dir: str = "./kd_output"
+    save_steps: int = 100
+    logging_steps: int = 10
+    max_seq_length: int | None = None
+
+    lora: LoRAConfig | None = None  # None → full fine-tune
+```
+
+### 8.5 KD Loss Formula
+
+```
+loss = alpha * KL_div(teacher_soft, student_soft) / T²
+     + (1 - alpha) * CE(student_logits, labels)
+
+where:
+    teacher_soft = softmax(teacher_logits / T)
+    student_soft = log_softmax(student_logits / T)
+```
+
+- `alpha=0.0`: Pure supervised training (no KD)
+- `alpha=1.0`: Pure KD (no hard label supervision)
+- `alpha=0.5` (default): Equal weighting
+
+### 8.6 Precompute Cache
+
+Teacher logits are saved to `{teacher_logits_output_dir}/teacher_logits.pt`.
+
+**Cache invalidation**: If the file already exists, it is reused without recomputation. To force recomputation, delete the cache directory or use a different `teacher_logits_output_dir`.
+
+### 8.7 Pipeline Construction
+
+```python
+teacher_handle = HFModelHandle(source=ModelSource(identifier=MODEL_ID))
+teacher_handle.load()  # Load teacher BEFORE pipeline runs
+
+student_handle = HFModelHandle(source=ModelSource(identifier=MODEL_ID))
+
+kd_adapter = KnowledgeDistillationAdapter(
+    config=DistillationConfig(
         dataset=DatasetConfig(source="tatsu-lab/alpaca", max_samples=1000),
-        max_steps=200,
-        learning_rate=2e-4,
-        per_device_train_batch_size=2,
-        gradient_accumulation_steps=8,
-        lora=LoRAConfig(r=16, lora_alpha=64),
+        temperature=2.0,
+        alpha=0.5,
+        precompute_teacher_logits=True,
     ),
-    tokenizer=model_handle,  # HFModelHandle com get_tokenizer()
+    tokenizer=student_handle,
+    teacher_model_handle=teacher_handle,
 )
 
-healed_model = healer.heal(compressed_model)
+pipeline = Pipeline(steps=[
+    PipelineStep("Load Model (Student)", port=student_handle),
+    PipelineStep("Compress", port=compressor),
+    PipelineStep("KD Healing", port=kd_adapter),
+])
+```
+
+### 8.8 Limitations
+
+1. **Teacher must be loaded before `heal()`** — `teacher_model_handle` must have `load()` called and `get_model_instance()` returning the uncompressed teacher model.
+
+2. **Dataset column "text" hardcoded** — Same limitation as `HFTrainerAdapter`.
+
+3. **Streaming dataset materialization** — Same limitation as `HFTrainerAdapter`.
+
+4. **`alpha` sensitivity** — `alpha=1.0` (pure KD) may cause training instability without sufficient dataset size.
+
+---
+
+## 9. Exports
+
+```python
+from llm_flux.adapters.healing import HFTrainerAdapter, KnowledgeDistillationAdapter
+from llm_flux.core.healing import HealingConfig, LoRAConfig, DistillationConfig, HealingPort
 ```
