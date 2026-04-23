@@ -10,7 +10,7 @@ from typing import Any
 import networkx as nx
 from loguru import logger
 
-from llm_flux.adapters.compression.depth_pruning import _cleanup_temp_cache_dirs
+from llm_flux.adapters.compression.qwen3_depth_pruning import _cleanup_temp_cache_dirs
 from llm_flux.core.compression import CompressionNotSupportedError
 from llm_flux.core.model import ModelHandle
 from llm_flux.core.profiling import ProfilingResult

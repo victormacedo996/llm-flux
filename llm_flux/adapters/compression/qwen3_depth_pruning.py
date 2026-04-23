@@ -1,8 +1,9 @@
 """
-adapters/compression/depth_pruning.py — Angular Distance Depth Pruning Adapter.
+adapters/compression/qwen3_depth_pruning.py — Qwen3-Specific Angular Distance Depth Pruning Adapter.
 
 Prunes the most redundant layers based on the angular distance of their representations
-across a calibration dataset. Supports aligning vocabulary sizes for Tensor Core efficiency.
+across a calibration dataset. Specifically designed for Qwen3 models and updates all
+Qwen3-specific config fields (layer_types, max_window_layers, etc.) after pruning.
 """
 
 from __future__ import annotations
@@ -38,14 +39,15 @@ def _cleanup_temp_cache_dirs() -> None:
         _TEMP_CACHE_DIRS.clear()
 
 
-class DepthPruningConfig(CompressionConfig):
-    name: str = "depth-pruning"
+class Qwen3DepthPruningConfig(CompressionConfig):
+    name: str = "qwen3-depth-pruning"
     pruning_ratio: float = Field(0.1, ge=0.01, lt=1.0)
     calibration_samples: int = 32
     calibration_dataset: DatasetConfig
     output_dir: str | None = None
     persist_compression_cache: bool = False
     cleanup_cache_after_pipeline: bool = True
+    model_type: str = "qwen3"
 
 
 def get_transformer_layers(model: Any) -> nn.ModuleList:
@@ -133,15 +135,18 @@ def angular_distance_importance(model: Any, input_ids: torch.Tensor) -> list[flo
 LayerImportanceFn = Callable[[Any, torch.Tensor], list[float]]
 
 
-class DepthPruningAdapter(CompressionPort):
+class Qwen3DepthPruningAdapter(CompressionPort):
     """
     Implements Depth Pruning by removing layers with the smallest importance.
     Uses Angular distance (cosine similarity between layer input/output).
+
+    Specifically designed for Qwen3 models. Validates model type before pruning
+    and updates all Qwen3-specific config fields (layer_types, max_window_layers).
     """
 
     def __init__(
         self,
-        config: DepthPruningConfig,
+        config: Qwen3DepthPruningConfig,
         tokenizer: Any,
         importance_fn: LayerImportanceFn | None = None,
     ) -> None:
@@ -154,6 +159,18 @@ class DepthPruningAdapter(CompressionPort):
 
     def compress(self, model_handle: ModelHandle) -> ModelHandle:
         model = model_handle.get_model_instance()
+
+        if not hasattr(model.config, "model_type"):
+            raise CompressionNotSupportedError(
+                "Model configuration lacks 'model_type' field. "
+                f"This pruner only supports {self.config.model_type} models."
+            )
+
+        if model.config.model_type != self.config.model_type:
+            raise CompressionNotSupportedError(
+                f"This pruner only supports {self.config.model_type} models, "
+                f"but got {model.config.model_type}."
+            )
 
         if not hasattr(model.config, "num_hidden_layers"):
             raise CompressionNotSupportedError(
@@ -273,6 +290,27 @@ class DepthPruningAdapter(CompressionPort):
 
         # Update config
         model.config.num_hidden_layers = len(keep_indices)
+
+        if hasattr(model.config, "layer_types") and model.config.layer_types is not None:
+            original_layer_types = model.config.layer_types
+            model.config.layer_types = [original_layer_types[i] for i in keep_indices]
+            logger.info(
+                f"  [Depth Prune] Updated layer_types: {len(model.config.layer_types)} entries"
+            )
+
+        if hasattr(model.config, "max_window_layers"):
+            original_mwl = model.config.max_window_layers
+            num_pruned_below = sum(1 for idx in layers_to_drop if idx < original_mwl)
+            new_mwl = max(0, min(original_mwl - num_pruned_below, model.config.num_hidden_layers))
+            model.config.max_window_layers = new_mwl
+            logger.info(f"  [Depth Prune] max_window_layers: {original_mwl} -> {new_mwl}")
+
+        if hasattr(model.config, "mlp_layer_types") and model.config.mlp_layer_types is not None:
+            original_mlp = model.config.mlp_layer_types
+            model.config.mlp_layer_types = [original_mlp[i] for i in keep_indices]
+            mlp_count = len(model.config.mlp_layer_types)
+            logger.info(f"  [Depth Prune] Updated mlp_layer_types: {mlp_count} entries")
+
         logger.info(f"  [Depth Prune] Pruned. New layer count: {model.config.num_hidden_layers}")
 
         import gc

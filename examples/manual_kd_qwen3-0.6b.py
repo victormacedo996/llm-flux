@@ -23,9 +23,9 @@ import sys
 from pathlib import Path
 
 import torch
-from llm_flux.adapters.compression.depth_pruning import (
-    DepthPruningAdapter,
-    DepthPruningConfig,
+from llm_flux.adapters.compression.qwen3_depth_pruning import (
+    Qwen3DepthPruningAdapter,
+    Qwen3DepthPruningConfig,
     angular_distance_importance,
 )
 from llm_flux.adapters.profiling.lm_eval_adapter import LmEvalAdapter, LmEvalConfig
@@ -113,9 +113,9 @@ def main():
         ),
     )
 
-    depth_pruner = DepthPruningAdapter(
-        config=DepthPruningConfig(
-            name=f"depth-pruning-{COMPRESSION_RATIO * 100:.0f}pct",
+    depth_pruner = Qwen3DepthPruningAdapter(
+        config=Qwen3DepthPruningConfig(
+            name=f"qwen3-depth-pruning-{COMPRESSION_RATIO * 100:.0f}pct",
             description=f"Drops {COMPRESSION_RATIO * 100:.0f}% of layers",
             pruning_ratio=COMPRESSION_RATIO,
             calibration_samples=CALIBRATION_SAMPLES,
