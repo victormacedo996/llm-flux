@@ -11,6 +11,7 @@ import networkx as nx
 from loguru import logger
 
 from llm_flux.adapters.compression.qwen3_depth_pruning import _cleanup_temp_cache_dirs
+from llm_flux.adapters.profiling.lm_eval_adapter import _cleanup_lm_eval_cache_dirs
 from llm_flux.core.compression import CompressionNotSupportedError
 from llm_flux.core.model import ModelHandle
 from llm_flux.core.profiling import ProfilingResult
@@ -103,6 +104,7 @@ class PipelineExecutor:
 
         finally:
             _cleanup_temp_cache_dirs()
+            _cleanup_lm_eval_cache_dirs()
 
         finished_at = datetime.now()
         logger.info(f"🏁 Pipeline complete in {(finished_at - started_at).total_seconds():.1f} s")

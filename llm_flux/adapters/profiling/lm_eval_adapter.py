@@ -38,6 +38,21 @@ class LmEvalConfig(ProfilingConfig):
 
     gen_kwargs: dict[str, Any] | None = None
 
+    lm_eval_cache_base_dir: str | None = None
+
+
+_LM_EVAL_CACHE_DIRS: list[str] = []
+
+
+def _cleanup_lm_eval_cache_dirs() -> None:
+    import shutil
+
+    if _LM_EVAL_CACHE_DIRS:
+        logger.info(f"  🗑️  Cleaning up {len(_LM_EVAL_CACHE_DIRS)} lm-eval cache directory(ies)...")
+        for path in _LM_EVAL_CACHE_DIRS:
+            shutil.rmtree(path, ignore_errors=True)
+        _LM_EVAL_CACHE_DIRS.clear()
+
 
 class LmEvalAdapter(ProfilingPort):
     def __init__(
@@ -45,6 +60,26 @@ class LmEvalAdapter(ProfilingPort):
         config: LmEvalConfig,
     ) -> None:
         self.config = config
+
+    def _get_lm_eval_cache_dir(self, stage_label: str, model_name: str) -> str:
+        """Create a unique temp directory for lm-eval model cache."""
+        import tempfile
+        from pathlib import Path
+
+        base = (
+            Path(self.config.lm_eval_cache_base_dir)
+            if self.config.lm_eval_cache_base_dir
+            else Path(tempfile.gettempdir())
+        )
+        cache_dir = base / model_name.replace(" ", "_")
+        cache_dir.mkdir(parents=True, exist_ok=True)
+
+        temp_dir = tempfile.mkdtemp(
+            prefix=f"lm_eval_{stage_label.replace(' ', '_')}_",
+            dir=cache_dir,
+        )
+        _LM_EVAL_CACHE_DIRS.append(temp_dir)
+        return temp_dir
 
     def profile(
         self,
@@ -137,7 +172,15 @@ class LmEvalAdapter(ProfilingPort):
                 torch.cuda.reset_peak_memory_stats()
 
         # ── lm-eval ────────────────────────────────────────────────────────────
-        hf_model = HFLM(pretrained=model, tokenizer=tokenizer)
+        lm_eval_cache_dir = self._get_lm_eval_cache_dir(
+            stage_label,
+            model_handle.name if hasattr(model_handle, "name") else "unknown",
+        )
+
+        logger.info(f"  📁 Saving model to cache: {lm_eval_cache_dir}")
+        model.save_pretrained(lm_eval_cache_dir)
+        tokenizer.save_pretrained(lm_eval_cache_dir)
+        hf_model = HFLM(pretrained=lm_eval_cache_dir, tokenizer=tokenizer)
 
         logger.info(
             f"  Running lm-eval | tasks={self.config.tasks} "
