@@ -97,6 +97,9 @@ class KnowledgeDistillationAdapter(HealingPort):
             actual_tokenizer.pad_token = actual_tokenizer.eos_token
 
         self._tokenizer = actual_tokenizer
+        self._pad_token_id = (
+            actual_tokenizer.pad_token_id if actual_tokenizer.pad_token_id is not None else 0
+        )
 
         max_seq_len = cfg.max_seq_length or 512
 
@@ -161,6 +164,7 @@ class KnowledgeDistillationAdapter(HealingPort):
             alpha=cfg.alpha,
             device=next(model.parameters()).device,
             max_seq_length=max_seq_len,
+            max_steps=cfg.kd_max_steps,
         )
 
         kd_trainer.train()
@@ -176,6 +180,12 @@ class KnowledgeDistillationAdapter(HealingPort):
             should_merge = cfg.save_format == SaveFormat.MERGED
 
         if should_merge:
+            if hasattr(kd_trainer, "optimizer") and kd_trainer.optimizer is not None:
+                kd_trainer.optimizer.zero_grad()
+
+            if hasattr(model, "cache_clear"):
+                model.cache_clear()
+
             if hasattr(model, "merge_and_unload"):
                 logger.info("  🔀 Merging LoRA weights into base model...")
                 model = model.merge_and_unload()
@@ -183,9 +193,22 @@ class KnowledgeDistillationAdapter(HealingPort):
             else:
                 logger.warning("  ⚠️  merge_and_unload() not available, saving as-is.")
 
+        if cfg.clear_cache_before_save:
+            logger.info("  🧹 Clearing caches before save...")
+            if hasattr(model, "cache_clear"):
+                model.cache_clear()
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+                torch.cuda.empty_cache()
+            model = model.cpu()
+
         logger.info(f"  💾 Saving healed student model to {cfg.output_dir}...")
         model.save_pretrained(cfg.output_dir)
         self._tokenizer.save_pretrained(cfg.output_dir)
+
+        if hasattr(kd_trainer, "optimizer") and kd_trainer.optimizer is not None:
+            del kd_trainer.optimizer
+            kd_trainer.optimizer = None
 
         result = CompressedModelHandle(
             original_handle=self.teacher_model_handle,
@@ -280,7 +303,14 @@ class KnowledgeDistillationAdapter(HealingPort):
             except Exception as e:
                 logger.warning(f"  ⚠️  Failed to load old cache: {e}, recomputing...")
 
-        # Compute fresh
+        # Compute fresh - delete old cache to ensure clean state
+        if new_cache_path.exists() or old_cache_path.exists():
+            logger.info("  🗑️  Removing old KD cache to ensure clean state...")
+            import shutil
+
+            shutil.rmtree(self.config.teacher_logits_output_dir, ignore_errors=True)
+            new_cache_path.parent.mkdir(parents=True, exist_ok=True)
+
         logger.info("  🔢 Computing teacher logits...")
         kd_pairs = self._compute_teacher_logits(teacher, tokenized_dataset, tokenizer, batch_size)
 
@@ -354,6 +384,7 @@ class _KDTrainer:
         alpha: float,
         device: torch.device,
         max_seq_length: int = 512,
+        max_steps: int = 100,
     ) -> None:
         self.model = model
         self.kd_pairs = kd_pairs
@@ -362,6 +393,7 @@ class _KDTrainer:
         self.alpha = alpha
         self.device = device
         self.max_seq_length = max_seq_length
+        self.max_steps = max_steps
         self.optimizer = None
         self.step = 0
 
@@ -378,7 +410,7 @@ class _KDTrainer:
             shuffle=True,
         )
 
-        total_steps = min(len(self.kd_pairs), 100)
+        total_steps = min(len(self.kd_pairs), self.max_steps)
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=2e-4)
         scheduler = get_linear_schedule_with_warmup(
             self.optimizer,

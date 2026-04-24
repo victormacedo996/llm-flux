@@ -131,6 +131,7 @@ class DistillationConfig(BaseModel):
 
     kd_max_steps: int = 100
     kd_learning_rate: float = 2e-4
+    clear_cache_before_save: bool = True
 
 
 # ── Port ──────────────────────────────────────────────────────────────────────
