@@ -10,6 +10,7 @@ Supports two modes:
 
 from __future__ import annotations
 
+from collections import namedtuple
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,8 @@ from llm_flux.core.model import CompressedModelHandle
 from llm_flux.datasets.huggingface import HFDatasetAdapter
 from llm_flux.datasets.local import LocalDatasetAdapter
 from llm_flux.datasets.port import DatasetConfig
+
+KDPair = namedtuple("KDPair", ["input_ids", "attention_mask", "teacher_logits"])
 
 
 def _load_dataset(config: DatasetConfig) -> Any:
@@ -123,20 +126,9 @@ class KnowledgeDistillationAdapter(HealingPort):
 
         logger.info(f"  📊 Using {len(tokenized_dataset)} samples for KD training.")
 
-        teacher_logits_path = Path(cfg.teacher_logits_output_dir) / "teacher_logits.pt"
-        teacher_logits_path.parent.mkdir(parents=True, exist_ok=True)
-
-        if cfg.precompute_teacher_logits and teacher_logits_path.exists():
-            logger.info(f"  📂 Loading cached teacher logits from {teacher_logits_path}")
-            teacher_logits_list = torch.load(teacher_logits_path)
-        else:
-            logger.info("  🔢 Computing teacher logits...")
-            teacher_logits_list = self._compute_teacher_logits(
-                teacher, tokenized_dataset, actual_tokenizer, cfg.per_device_train_batch_size
-            )
-            if cfg.precompute_teacher_logits:
-                torch.save(teacher_logits_list, teacher_logits_path)
-                logger.info(f"  💾 Saved teacher logits to {teacher_logits_path}")
+        kd_pairs = self._load_or_compute_kd_pairs(
+            teacher, tokenized_dataset, actual_tokenizer, cfg.per_device_train_batch_size
+        )
 
         if cfg.precompute_teacher_logits:
             logger.info("  🗑️  Unloading teacher model to free memory...")
@@ -159,19 +151,24 @@ class KnowledgeDistillationAdapter(HealingPort):
             model = get_peft_model(model, peft_cfg)
             model.print_trainable_parameters()
 
-        logger.info(f"  🏋️  Starting KD training for {cfg.max_steps} steps...")
+        logger.info(f"  🏋️  Starting KD training for {cfg.kd_max_steps} steps...")
 
         kd_trainer = _KDTrainer(
             model=model,
-            teacher_logits_list=teacher_logits_list,
+            kd_pairs=kd_pairs,
+            tokenizer=actual_tokenizer,
             temperature=cfg.temperature,
             alpha=cfg.alpha,
             device=next(model.parameters()).device,
+            max_seq_length=max_seq_len,
         )
 
         kd_trainer.train()
 
         logger.info("  ✅ Knowledge Distillation complete.")
+
+        logger.info("  🔄 Setting model to eval mode...")
+        model.eval()
 
         if cfg.save_format == SaveFormat.AUTO:
             should_merge = cfg.lora is not None
@@ -182,6 +179,7 @@ class KnowledgeDistillationAdapter(HealingPort):
             if hasattr(model, "merge_and_unload"):
                 logger.info("  🔀 Merging LoRA weights into base model...")
                 model = model.merge_and_unload()
+                model.eval()
             else:
                 logger.warning("  ⚠️  merge_and_unload() not available, saving as-is.")
 
@@ -231,15 +229,76 @@ class KnowledgeDistillationAdapter(HealingPort):
             "attention_mask": torch.stack(attention_mask_list),
         }
 
+    def _load_or_compute_kd_pairs(
+        self,
+        teacher: Any,
+        tokenized_dataset: Any,
+        tokenizer: Any,
+        batch_size: int,
+    ) -> list[KDPair]:
+        """Load cached KD pairs or compute new ones.
+
+        Supports both old format (list[torch.Tensor]) and new format (list[KDPair]).
+        For old format, reconstructs KDPair by re-tokenizing the dataset.
+        """
+        new_cache_path = Path(self.config.teacher_logits_output_dir) / "teacher_kd_pairs.pt"
+        old_cache_path = Path(self.config.teacher_logits_output_dir) / "teacher_logits.pt"
+        new_cache_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Try loading new format first
+        if self.config.precompute_teacher_logits and new_cache_path.exists():
+            try:
+                kd_pairs = torch.load(new_cache_path)
+                if kd_pairs and isinstance(kd_pairs[0], KDPair):
+                    logger.info(f"  📂 Loading cached KD pairs from {new_cache_path}")
+                    return kd_pairs
+            except Exception:
+                pass
+
+        # Try loading old format for backward compatibility
+        if self.config.precompute_teacher_logits and old_cache_path.exists():
+            try:
+                logger.info(f"  📂 Loading old-format cache from {old_cache_path}")
+                old_logits_list = torch.load(old_cache_path)
+                if isinstance(old_logits_list, list) and len(old_logits_list) > 0:
+                    if not isinstance(old_logits_list[0], torch.Tensor):
+                        raise ValueError("Old cache format invalid")
+
+                    logger.info("  🔄 Reconstructing KD pairs from old cache (re-tokenizing)...")
+
+                    kd_pairs = self._compute_teacher_logits(
+                        teacher, tokenized_dataset, tokenizer, batch_size
+                    )
+
+                    torch.save(kd_pairs, new_cache_path)
+                    logger.info(f"  💾 Saved new-format KD pairs to {new_cache_path}")
+
+                    old_cache_path.unlink(missing_ok=True)
+                    logger.info(f"  🗑️  Removed old cache file: {old_cache_path}")
+
+                    return kd_pairs
+            except Exception as e:
+                logger.warning(f"  ⚠️  Failed to load old cache: {e}, recomputing...")
+
+        # Compute fresh
+        logger.info("  🔢 Computing teacher logits...")
+        kd_pairs = self._compute_teacher_logits(teacher, tokenized_dataset, tokenizer, batch_size)
+
+        if self.config.precompute_teacher_logits:
+            torch.save(kd_pairs, new_cache_path)
+            logger.info(f"  💾 Saved KD pairs to {new_cache_path}")
+
+        return kd_pairs
+
     def _compute_teacher_logits(
         self,
         teacher: Any,
         tokenized_dataset: Any,
         tokenizer: Any,
         batch_size: int,
-    ) -> list[torch.Tensor]:
+    ) -> list[KDPair]:
         teacher.eval()
-        logits_list = []
+        kd_pairs: list[KDPair] = []
 
         from torch.utils.data import DataLoader
 
@@ -262,55 +321,65 @@ class KnowledgeDistillationAdapter(HealingPort):
                 logits = outputs.logits.float()
 
                 for j in range(logits.size(0)):
-                    logits_list.append(logits[j].cpu())
+                    kd_pairs.append(
+                        KDPair(
+                            input_ids=input_ids[j].cpu(),
+                            attention_mask=attention_mask[j].cpu(),
+                            teacher_logits=logits[j].cpu(),
+                        )
+                    )
 
                 if (i + 1) % 10 == 0:
                     logger.info(
                         f"    Processed {(i + 1) * batch_size} / {len(tokenized_dataset)} samples"
                     )
 
-        return logits_list
+        return kd_pairs
 
 
 class _KDTrainer:
     """
     Custom training loop for knowledge distillation.
 
-    Computes the combined KD loss:
-        loss = alpha * KL_div(teacher_soft, student_soft) / T²
-             + (1 - alpha) * CE(student_logits, labels)
+    Uses real input_ids and attention_mask from KDPair to train the student model
+    with proper masking, avoiding the broken zero-sequence approach.
     """
 
     def __init__(
         self,
         model: Any,
-        teacher_logits_list: list[torch.Tensor],
+        kd_pairs: list[KDPair],
+        tokenizer: Any,
         temperature: float,
         alpha: float,
         device: torch.device,
+        max_seq_length: int = 512,
     ) -> None:
         self.model = model
-        self.teacher_logits_list = teacher_logits_list
+        self.kd_pairs = kd_pairs
+        self.tokenizer = tokenizer
         self.temperature = temperature
         self.alpha = alpha
         self.device = device
+        self.max_seq_length = max_seq_length
         self.optimizer = None
         self.step = 0
 
     def train(self) -> None:
+        import torch.nn.functional as F
         from torch.utils.data import DataLoader
         from transformers import get_linear_schedule_with_warmup
 
         self.model.train()
-        self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=2e-4)
 
         dataloader = DataLoader(
-            list(range(len(self.teacher_logits_list))),
+            self.kd_pairs,
             batch_size=1,
             shuffle=True,
         )
 
-        total_steps = 100
+        total_steps = min(len(self.kd_pairs), 100)
+        self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=2e-4)
         scheduler = get_linear_schedule_with_warmup(
             self.optimizer,
             num_warmup_steps=int(total_steps * 0.1),
@@ -322,18 +391,37 @@ class _KDTrainer:
         pbar = tqdm(total=total_steps, desc="KD Training")
 
         while self.step < total_steps:
-            for idx in dataloader:
+            for kd_pair in dataloader:
                 if self.step >= total_steps:
                     break
 
-                teacher_logits = self.teacher_logits_list[idx[0]].to(self.device)
+                input_ids = kd_pair.input_ids.squeeze(0).to(self.device)
+                attention_mask = kd_pair.attention_mask.squeeze(0).to(self.device)
+                teacher_logits = kd_pair.teacher_logits.squeeze(0).to(self.device)
 
-                input_ids = teacher_logits.new_zeros((1, teacher_logits.size(0)), dtype=torch.long)
+                seq_len = input_ids.size(0)
+                if seq_len > self.max_seq_length:
+                    input_ids = input_ids[: self.max_seq_length]
+                    attention_mask = attention_mask[: self.max_seq_length]
+                    teacher_logits = teacher_logits[: self.max_seq_length, :]
+                elif seq_len < self.max_seq_length:
+                    pad_len = self.max_seq_length - seq_len
+                    input_ids = F.pad(
+                        input_ids, (0, pad_len), value=self.tokenizer.pad_token_id or 0
+                    )
+                    attention_mask = F.pad(attention_mask, (0, pad_len), value=0)
+                    teacher_logits = F.pad(teacher_logits, (0, 0, 0, pad_len), value=0)
 
-                outputs = self.model(input_ids=input_ids)
+                input_ids = input_ids.unsqueeze(0)
+                attention_mask = attention_mask.unsqueeze(0)
+
+                outputs = self.model(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                )
                 student_logits = outputs.logits.squeeze(0)
 
-                loss = self._kd_loss(student_logits.unsqueeze(0), teacher_logits.unsqueeze(0))
+                loss = self._kd_loss(student_logits, teacher_logits)
 
                 loss.backward()
                 self.optimizer.step()
@@ -347,11 +435,30 @@ class _KDTrainer:
                     break
 
         pbar.close()
+        self.model.eval()
 
     def _kd_loss(self, student_logits: torch.Tensor, teacher_logits: torch.Tensor) -> torch.Tensor:
         import torch.nn.functional as F
 
         T = self.temperature
+
+        teacher_seq_len, teacher_vocab_size = teacher_logits.shape
+        student_seq_len, student_vocab_size = student_logits.shape
+
+        if student_seq_len != teacher_seq_len or student_vocab_size != teacher_vocab_size:
+            if student_seq_len > teacher_seq_len:
+                student_logits = student_logits[:teacher_seq_len, :]
+            elif student_seq_len < teacher_seq_len:
+                student_logits = F.pad(
+                    student_logits, (0, 0, 0, teacher_seq_len - student_seq_len), value=0
+                )
+
+            if student_vocab_size > teacher_vocab_size:
+                student_logits = student_logits[:, :teacher_vocab_size]
+            elif student_vocab_size < teacher_vocab_size:
+                student_logits = F.pad(
+                    student_logits, (0, teacher_vocab_size - student_vocab_size), value=0
+                )
 
         student_log_probs = F.log_softmax(student_logits / T, dim=-1)
         teacher_probs = F.softmax(teacher_logits / T, dim=-1)

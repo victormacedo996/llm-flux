@@ -38,8 +38,6 @@ class LoRAConfig(BaseModel):
     task_type: str = "CAUSAL_LM"
 
 
-
-
 class SaveFormat(str, Enum):
     """
     Format for saving healed models (used in KnowledgeDistillationAdapter).
@@ -130,6 +128,9 @@ class DistillationConfig(BaseModel):
     lora: LoRAConfig | None = None
 
     save_format: SaveFormat = SaveFormat.AUTO
+
+    kd_max_steps: int = 100
+    kd_learning_rate: float = 2e-4
 
 
 # ── Port ──────────────────────────────────────────────────────────────────────

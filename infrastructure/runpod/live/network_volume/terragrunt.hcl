@@ -17,6 +17,6 @@ terraform {
 
 inputs = {
   name           = "ag-test-network-volume"
-  size           = 50              # GB — between 0 and 4000
+  size           = 150              # GB — between 0 and 4000
   data_center_id = "EU-CZ-1"
 }
